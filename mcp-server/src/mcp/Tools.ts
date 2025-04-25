@@ -21,24 +21,24 @@ interface OAuthTokens {
 }
 
 export class Tools {
-    // LinkedIn API version to use for all requests
-    private readonly LINKEDIN_API_VERSION = '202504';
+    // LinkedIn API version to use for all requests - updated to latest based on deprecation timeline
+    private readonly LINKEDIN_API_VERSION = '202504'; // Most current version as of April 2025
     private readonly LINKEDIN_PROTOCOL_VERSION = '2.0.0';
 
-    // Get user profile information from LinkedIn
+    /**
+     * Get user profile information from LinkedIn using minimal projection
+     * to avoid permission issues. Using localizedFirstName and localizedLastName
+     * which are accessible with the 'profile' scope.
+     */
     public getUserInfo = async (
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
+            // Use specific field projection to minimize permission requirements
             const response = await axios.get(
                 'https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))',
                 {
-                    headers: {
-                        'Authorization': `Bearer ${linkedinTokens.access_token}`,
-                        'Content-Type': 'application/json',
-                        'LinkedIn-Version': this.LINKEDIN_API_VERSION,
-                        'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
-                    }
+                    headers: this.getLinkedInHeaders(linkedinTokens.access_token)
                 }
             );
 
@@ -73,9 +73,32 @@ export class Tools {
                     status: e.response?.status,
                     statusText: e.response?.statusText,
                     data: e.response?.data,
-                    headers: e.config?.headers
+                    headers: e.config?.headers,
+                    url: e.config?.url
                 });
+
+                // Check for specific LinkedIn API error patterns
+                if (e.response?.status === 403 && e.response?.data?.message?.includes('NO_VERSION')) {
+                    return {
+                        isError: true,
+                        content: [{
+                            type: "text",
+                            text: "LinkedIn API version error: Please verify the application's API version settings. Current API version may be deprecated."
+                        }]
+                    };
+                }
+
+                if (e.response?.status === 401) {
+                    return {
+                        isError: true,
+                        content: [{
+                            type: "text",
+                            text: "LinkedIn authentication error: Your access token may have expired. Please log in again."
+                        }]
+                    };
+                }
             }
+
             return {
                 isError: true,
                 content: [{ type: "text", text: `Error getting user info: ${e.message || 'Unknown error'}` }]
@@ -83,15 +106,21 @@ export class Tools {
         }
     }
 
-    // Create a post on LinkedIn
+    /**
+     * Create a post on LinkedIn using the shares API
+     * Requires w_member_social scope
+     */
     public createPost = async (
         { content }: { content: string },
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
+            // Get user ID with minimal projection
+            const userId = await this.getUserId(linkedinTokens);
+
             // Using LinkedIn Share API v2
             const postData = {
-                owner: 'urn:li:person:' + await this.getUserId(linkedinTokens),
+                owner: `urn:li:person:${userId}`,
                 text: {
                     text: content
                 },
@@ -104,18 +133,17 @@ export class Tools {
                 visibility: 'PUBLIC'
             };
 
+            console.log('Creating LinkedIn post with data:', JSON.stringify(postData, null, 2));
+
             const response = await axios.post(
                 'https://api.linkedin.com/v2/shares',
                 postData,
                 {
-                    headers: {
-                        'Authorization': `Bearer ${linkedinTokens.access_token}`,
-                        'Content-Type': 'application/json',
-                        'LinkedIn-Version': this.LINKEDIN_API_VERSION,
-                        'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
-                    }
+                    headers: this.getLinkedInHeaders(linkedinTokens.access_token)
                 }
             );
+
+            console.log('LinkedIn post created successfully, response:', response.data);
 
             return {
                 content: [
@@ -131,11 +159,24 @@ export class Tools {
                     status: e.response?.status,
                     statusText: e.response?.statusText,
                     data: e.response?.data,
-                    headers: e.config?.headers
+                    headers: e.config?.headers,
+                    url: e.config?.url
                 });
-            } else {
-                console.error('LinkedIn post creation error:', e.message);
+
+                // Check for specific LinkedIn API error patterns
+                if (e.response?.status === 403) {
+                    if (e.response?.data?.message?.includes('permission')) {
+                        return {
+                            isError: true,
+                            content: [{
+                                type: "text",
+                                text: "LinkedIn permission error: Your account doesn't have permission to post content. Please verify you've granted the w_member_social scope."
+                            }]
+                        };
+                    }
+                }
             }
+
             return {
                 isError: true,
                 content: [{
@@ -146,18 +187,34 @@ export class Tools {
         }
     }
 
-    // Get user ID (helper method)
+    /**
+     * Helper method to get a consistent set of LinkedIn API headers
+     * Ensures all required headers are present and correctly formatted
+     */
+    private getLinkedInHeaders(accessToken: string) {
+        return {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            'LinkedIn-Version': this.LINKEDIN_API_VERSION,
+            'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
+        };
+    }
+
+    /**
+     * Get user ID with minimal projection to reduce permission requirements
+     * Only requests the ID field explicitly
+     */
     private getUserId = async (linkedinTokens: OAuthTokens): Promise<string> => {
         try {
             // Only request the specific fields you need with explicit projection
             const response = await axios.get('https://api.linkedin.com/v2/me?projection=(id)', {
-                headers: {
-                    'Authorization': `Bearer ${linkedinTokens.access_token}`,
-                    'Content-Type': 'application/json',
-                    'LinkedIn-Version': this.LINKEDIN_API_VERSION,
-                    'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
-                }
+                headers: this.getLinkedInHeaders(linkedinTokens.access_token)
             });
+
+            if (!response.data || !response.data.id) {
+                throw new Error('LinkedIn API returned invalid user data (missing ID)');
+            }
+
             return response.data.id;
         } catch (error) {
             if (axios.isAxiosError(error)) {
@@ -165,9 +222,20 @@ export class Tools {
                     status: error.response?.status,
                     statusText: error.response?.statusText,
                     data: error.response?.data,
-                    headers: error.config?.headers
+                    headers: error.config?.headers,
+                    url: error.config?.url
                 });
+
+                // Check for token expiration or version issues
+                if (error.response?.status === 401) {
+                    throw new Error('LinkedIn authentication failed: Your access token may have expired');
+                }
+
+                if (error.response?.status === 403 && error.response?.data?.message?.includes('NO_VERSION')) {
+                    throw new Error('LinkedIn API version error: API version may be deprecated');
+                }
             }
+
             console.error('Error getting user ID:', error);
             throw error;
         }
