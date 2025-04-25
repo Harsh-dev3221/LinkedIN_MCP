@@ -21,24 +21,30 @@ interface OAuthTokens {
 }
 
 export class Tools {
+    // LinkedIn API version to use for all requests
+    private readonly LINKEDIN_API_VERSION = '202504';
+    private readonly LINKEDIN_PROTOCOL_VERSION = '2.0.0';
+
     // Get user profile information from LinkedIn
     public getUserInfo = async (
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
             const response = await axios.get(
-                'https://api.linkedin.com/v2/me?projection=(id,firstName,lastName,profilePicture(displayImage~:playableStreams))',
+                'https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))',
                 {
                     headers: {
                         'Authorization': `Bearer ${linkedinTokens.access_token}`,
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'LinkedIn-Version': this.LINKEDIN_API_VERSION,
+                        'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
                     }
                 }
             );
 
             const userData = response.data;
-            const firstName = userData.firstName.localized[Object.keys(userData.firstName.localized)[0]];
-            const lastName = userData.lastName.localized[Object.keys(userData.lastName.localized)[0]];
+            const firstName = userData.localizedFirstName || '';
+            const lastName = userData.localizedLastName || '';
 
             let profilePictureUrl = null;
             if (userData.profilePicture &&
@@ -62,6 +68,14 @@ export class Tools {
                 ]
             };
         } catch (e: any) {
+            if (axios.isAxiosError(e)) {
+                console.error('LinkedIn getUserInfo error details:', {
+                    status: e.response?.status,
+                    statusText: e.response?.statusText,
+                    data: e.response?.data,
+                    headers: e.config?.headers
+                });
+            }
             return {
                 isError: true,
                 content: [{ type: "text", text: `Error getting user info: ${e.message || 'Unknown error'}` }]
@@ -97,7 +111,8 @@ export class Tools {
                     headers: {
                         'Authorization': `Bearer ${linkedinTokens.access_token}`,
                         'Content-Type': 'application/json',
-                        'X-Restli-Protocol-Version': '2.0.0'
+                        'LinkedIn-Version': this.LINKEDIN_API_VERSION,
+                        'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
                     }
                 }
             );
@@ -111,7 +126,16 @@ export class Tools {
                 ]
             };
         } catch (e: any) {
-            console.error('LinkedIn post creation error:', e.response?.data || e.message);
+            if (axios.isAxiosError(e)) {
+                console.error('LinkedIn post creation error details:', {
+                    status: e.response?.status,
+                    statusText: e.response?.statusText,
+                    data: e.response?.data,
+                    headers: e.config?.headers
+                });
+            } else {
+                console.error('LinkedIn post creation error:', e.message);
+            }
             return {
                 isError: true,
                 content: [{
@@ -125,14 +149,25 @@ export class Tools {
     // Get user ID (helper method)
     private getUserId = async (linkedinTokens: OAuthTokens): Promise<string> => {
         try {
-            const response = await axios.get('https://api.linkedin.com/v2/me', {
+            // Only request the specific fields you need with explicit projection
+            const response = await axios.get('https://api.linkedin.com/v2/me?projection=(id)', {
                 headers: {
                     'Authorization': `Bearer ${linkedinTokens.access_token}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'LinkedIn-Version': this.LINKEDIN_API_VERSION,
+                    'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
                 }
             });
             return response.data.id;
         } catch (error) {
+            if (axios.isAxiosError(error)) {
+                console.error('LinkedIn getUserId error details:', {
+                    status: error.response?.status,
+                    statusText: error.response?.statusText,
+                    data: error.response?.data,
+                    headers: error.config?.headers
+                });
+            }
             console.error('Error getting user ID:', error);
             throw error;
         }
