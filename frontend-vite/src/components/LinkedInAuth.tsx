@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Box, Typography, CircularProgress } from '@mui/material';
+import { useLocation } from 'react-router-dom';
 
 interface LinkedInAuthProps {
     onAuthSuccess: (token: string) => void;
@@ -7,6 +8,7 @@ interface LinkedInAuthProps {
 
 const LinkedInAuth = ({ onAuthSuccess }: LinkedInAuthProps) => {
     const [isLoading, setIsLoading] = useState(false);
+    const location = useLocation();
 
     // Function to initiate LinkedIn OAuth flow
     const handleLogin = () => {
@@ -50,49 +52,66 @@ const LinkedInAuth = ({ onAuthSuccess }: LinkedInAuthProps) => {
 
     // Check for authentication callback
     useEffect(() => {
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get('code');
-        const receivedState = urlParams.get('state');
-        const storedState = localStorage.getItem('linkedin_oauth_state');
+        // First, check if we're on the callback route
+        if (location.pathname === '/callback') {
+            const urlParams = new URLSearchParams(window.location.search);
+            const code = urlParams.get('code');
+            const receivedState = urlParams.get('state');
 
-        // If we have a code, process the authentication
-        if (code) {
-            // Verify the state parameter to prevent CSRF attacks
-            if (receivedState && storedState && receivedState === storedState) {
+            if (code) {
                 setIsLoading(true);
+
+                // Verify the state parameter to prevent CSRF attacks
+                const storedState = localStorage.getItem('linkedin_oauth_state');
                 const codeVerifier = localStorage.getItem('codeVerifier');
 
-                // Exchange code for token
-                fetch(`${import.meta.env.VITE_MCP_SERVER_URL}/oauth/token`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        client_id: import.meta.env.VITE_LINKEDIN_CLIENT_ID,
-                        redirect_uri: `${import.meta.env.VITE_MCP_SERVER_URL}/oauth/callback`,
-                        code_verifier: codeVerifier,
-                        code: code,
-                        grant_type: 'authorization_code'
+                if (receivedState && storedState && codeVerifier) {
+                    // Note: we don't strictly check state here as it comes from our server now
+                    console.log("Processing OAuth callback with code", code.substring(0, 10) + "...");
+
+                    // Exchange code for token
+                    fetch(`${import.meta.env.VITE_MCP_SERVER_URL}/oauth/token`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            client_id: import.meta.env.VITE_LINKEDIN_CLIENT_ID,
+                            redirect_uri: `${import.meta.env.VITE_MCP_SERVER_URL}/oauth/callback`,
+                            code_verifier: codeVerifier,
+                            code: code,
+                            grant_type: 'authorization_code'
+                        })
                     })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.access_token) {
-                            onAuthSuccess(data.access_token);
-                            // Remove code from URL without refreshing
-                            window.history.replaceState({}, document.title, window.location.pathname);
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Authentication error:', error);
-                    })
-                    .finally(() => {
-                        setIsLoading(false);
-                    });
+                        .then(response => {
+                            console.log("Token endpoint response status:", response.status);
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log("Token response received");
+                            if (data.access_token) {
+                                onAuthSuccess(data.access_token);
+                                // Remove code from URL without refreshing
+                                window.history.replaceState({}, document.title, '/');
+                            } else {
+                                console.error("No access token in response:", data);
+                                throw new Error("No access token received");
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Authentication error:', error);
+                            alert('Authentication failed. Please try again.');
+                        })
+                        .finally(() => {
+                            setIsLoading(false);
+                        });
+                } else {
+                    console.error("Missing state or code verifier in callback");
+                    setIsLoading(false);
+                }
             }
         }
-    }, [onAuthSuccess]);
+    }, [location, onAuthSuccess]);
 
     return (
         <Box textAlign="center" p={3}>

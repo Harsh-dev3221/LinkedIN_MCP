@@ -8,6 +8,9 @@ import { TokensStore, OAuthTokens } from "./TokenStore.js";
 
 // LinkedIn authentication client
 class LinkedinAuthClient {
+    // Hardcoded correct client secret
+    private readonly correctClientSecret = "WPL_AP1.E1MUOXPg8FmJNQAV.ENdsdg==";
+
     constructor(private config: { clientId: string; clientSecret: string; redirectUrl: string }) { }
 
     generateMemberAuthorizationUrl(scopes: string[], state: string) {
@@ -16,31 +19,37 @@ class LinkedinAuthClient {
 
     async exchangeAuthCodeForAccessToken(code: string) {
         try {
-            console.log('Exchanging code for token with LinkedIn. Code:', code);
+            console.log('Exchanging code for token with LinkedIn. Code:', code.substring(0, 10), '...');
             console.log('Using redirect_uri:', this.config.redirectUrl);
             console.log('Using client_id:', this.config.clientId);
+
+            // LinkedIn is very specific about encoding - ensure exact same format as in authorization request
+            const redirectUri = this.config.redirectUrl;
 
             const params = new URLSearchParams();
             params.append('grant_type', 'authorization_code');
             params.append('code', code);
             params.append('client_id', this.config.clientId);
-            params.append('client_secret', this.config.clientSecret);
-            params.append('redirect_uri', this.config.redirectUrl);
+            // Use the hardcoded correct client secret instead of the one from config
+            params.append('client_secret', this.correctClientSecret);
+            params.append('redirect_uri', redirectUri);
 
             console.log('Request params:', params.toString());
 
+            // Use axios with increased timeout
             const response = await axios.post(
                 'https://www.linkedin.com/oauth/v2/accessToken',
-                params,
+                params.toString(), // Convert to string to ensure proper formatting
                 {
                     headers: {
                         'Content-Type': 'application/x-www-form-urlencoded'
-                    }
+                    },
+                    timeout: 10000 // Increase timeout to 10 seconds
                 }
             );
 
             console.log('LinkedIn token response status:', response.status);
-            console.log('LinkedIn token response data:', JSON.stringify(response.data));
+            console.log('LinkedIn token response data:', JSON.stringify(response.data, null, 2));
 
             // Check if the expected fields are in the response
             if (!response.data.access_token) {
@@ -56,13 +65,19 @@ class LinkedinAuthClient {
             if (axios.isAxiosError(error)) {
                 console.error('LinkedIn token exchange error details:', {
                     status: error.response?.status,
+                    statusText: error.response?.statusText,
                     data: error.response?.data,
-                    message: error.message
+                    message: error.message,
+                    config: {
+                        url: error.config?.url,
+                        headers: error.config?.headers,
+                        params: error.config?.params
+                    }
                 });
             } else {
                 console.error('LinkedIn token exchange non-Axios error:', error);
             }
-            throw new Error('Failed to exchange authorization code for access token');
+            throw new Error(`Failed to exchange authorization code: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
     }
 }
@@ -136,7 +151,7 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
         res: Response
     ) => {
         try {
-            console.log(`OAuth callback received with code: ${authorizationCode}`);
+            console.log(`OAuth callback received with code: ${authorizationCode.substring(0, 10)}...`);
             console.log(`State: ${state}`);
 
             if (!authorizationCode || !state) {
@@ -159,12 +174,13 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
             });
 
             try {
-                const linkedinTokens =
-                    await this._linkedinAuthClient.exchangeAuthCodeForAccessToken(
-                        authorizationCode
-                    );
+                // Create a server-side initiated token exchange with more details and error handling
+                const linkedinTokens = await this.directTokenExchange(authorizationCode, session);
+                if (!linkedinTokens) {
+                    return res.status(500).send("Server error: Failed to exchange authorization code (null response)");
+                }
 
-                console.log('LinkedIn tokens obtained');
+                console.log('LinkedIn tokens obtained successfully');
                 const { id } = this._tokensStore.storeTokens(session, linkedinTokens);
                 console.log('Tokens stored with ID:', id);
 
@@ -176,13 +192,18 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
                 );
                 this._sessionsStore.clearSession(state);
 
-                const redirectUrl = new URL(session.params.redirectUri);
+                // IMPORTANT FIX: Use the frontend URL as the redirect target, not the server's callback URL
+                // The redirectUri from session should be the frontend application, not the server callback
+                let frontendRedirectUrl = process.env.CORS_ALLOWED_ORIGIN || 'http://localhost:5173';
+                frontendRedirectUrl = `${frontendRedirectUrl}/callback`;
+
+                const redirectUrl = new URL(frontendRedirectUrl);
                 redirectUrl.searchParams.set("code", code);
                 if (session.params.state) {
                     redirectUrl.searchParams.set("state", session.params.state);
                 }
 
-                console.log(`Redirecting to: ${redirectUrl.toString()}`);
+                console.log(`Redirecting to frontend: ${redirectUrl.toString()}`);
                 return res.redirect(redirectUrl.toString());
             } catch (error) {
                 console.error("LinkedIn token exchange failed:", error);
@@ -193,6 +214,66 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
             return res.status(500).send("Server error: An unexpected error occurred");
         }
     };
+
+    // Direct token exchange with LinkedIn for callback path
+    private async directTokenExchange(authorizationCode: string, session: Session) {
+        try {
+            console.log('Starting direct token exchange with LinkedIn...');
+            console.log('Auth code (first 10 chars):', authorizationCode.substring(0, 10));
+
+            // LinkedIn requires exact matching redirect URL
+            const redirectUrl = `${process.env.SERVER_URL}/oauth/callback`;
+
+            // Use the correct client secret
+            const clientSecret = "WPL_AP1.E1MUOXPg8FmJNQAV.ENdsdg==";
+
+            // Build params manually
+            const params = new URLSearchParams();
+            params.append('grant_type', 'authorization_code');
+            params.append('code', authorizationCode);
+            params.append('client_id', process.env.LINKEDIN_CLIENT_ID || '');
+            params.append('client_secret', clientSecret);
+            params.append('redirect_uri', redirectUrl);
+
+            console.log('Token exchange parameters:', params.toString());
+
+            const response = await axios.post(
+                'https://www.linkedin.com/oauth/v2/accessToken',
+                params.toString(),
+                {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Accept': 'application/json'
+                    }
+                }
+            );
+
+            console.log('LinkedIn token response status:', response.status);
+            console.log('LinkedIn token response data keys:', Object.keys(response.data));
+
+            if (!response.data.access_token) {
+                throw new Error('LinkedIn response missing access_token');
+            }
+
+            return {
+                access_token: response.data.access_token,
+                expires_in: response.data.expires_in || 3600,
+                refresh_token: response.data.refresh_token || null
+            };
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                console.error('LinkedIn direct token exchange error details:', {
+                    status: error.response?.status,
+                    statusText: error.response?.statusText,
+                    data: error.response?.data,
+                    message: error.message
+                });
+            } else {
+                console.error('Non-Axios error during token exchange:', error);
+            }
+            throw new Error(`LinkedIn token exchange failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
 
     public challengeForAuthorizationCode = async (
         _client: OAuthClientInformationFull,

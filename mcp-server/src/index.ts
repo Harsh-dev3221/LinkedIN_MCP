@@ -29,19 +29,49 @@ class MCPServer {
     async handle(body: any, context: { transport: any }) {
         const { type, tool, params } = body;
 
-        if (type !== 'call-tool' || !this.tools[tool]) {
-            return { error: 'Invalid request' };
+        if (type !== 'call-tool') {
+            return {
+                isError: true,
+                content: [{ type: "text", text: "Invalid request type. Expected 'call-tool'." }]
+            };
+        }
+
+        if (!this.tools[tool]) {
+            return {
+                isError: true,
+                content: [{ type: "text", text: `Unknown tool: ${tool}. Available tools: ${Object.keys(this.tools).join(', ')}` }]
+            };
         }
 
         try {
             const toolInfo = this.tools[tool];
-            const validatedParams = toolInfo.schema.parse(params);
-            return await toolInfo.handler(validatedParams, { sessionId: context.transport.sessionId });
+            console.log(`Executing tool: ${tool}`, { params: JSON.stringify(params).substring(0, 100) + '...' });
+
+            let validatedParams;
+            try {
+                validatedParams = toolInfo.schema.parse(params);
+            } catch (validationError) {
+                console.error(`Validation error for tool ${tool}:`, validationError);
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `Invalid parameters for tool ${tool}: ${validationError instanceof Error ? validationError.message : 'Validation failed'}`
+                    }]
+                };
+            }
+
+            const result = await toolInfo.handler(validatedParams, { sessionId: context.transport.sessionId });
+            console.log(`Tool ${tool} executed successfully`);
+            return result;
         } catch (error) {
-            console.error('Error handling tool call:', error);
+            console.error(`Error executing tool ${tool}:`, error);
             return {
                 isError: true,
-                content: [{ type: "text", text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}` }]
+                content: [{
+                    type: "text",
+                    text: `Error executing tool ${tool}: ${error instanceof Error ? error.message : 'Unknown error'}`
+                }]
             };
         }
     }
@@ -100,11 +130,16 @@ server.tool(
             throw new Error("No sessionId found");
         }
 
-        const { auth } = transportsStore.getTransport(sessionId);
-        const { linkedinTokens } = (
-            auth as unknown as { extra: { linkedinTokens: OAuthTokens } }
-        ).extra;
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
 
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
         return tools.getUserInfo(linkedinTokens);
     }
 );
@@ -121,11 +156,16 @@ server.tool(
             throw new Error("No sessionId found");
         }
 
-        const { auth } = transportsStore.getTransport(sessionId);
-        const { linkedinTokens } = (
-            auth as unknown as { extra: { linkedinTokens: OAuthTokens } }
-        ).extra;
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
 
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
         return tools.createPost({ content }, linkedinTokens);
     }
 );
@@ -144,11 +184,16 @@ server.tool(
             throw new Error("No sessionId found");
         }
 
-        const { auth } = transportsStore.getTransport(sessionId);
-        const { linkedinTokens } = (
-            auth as unknown as { extra: { linkedinTokens: OAuthTokens } }
-        ).extra;
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
 
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
         return tools.analyzeImageAndCreateContent({ imageBase64, prompt, mimeType }, linkedinTokens);
     }
 );
@@ -240,15 +285,47 @@ app.post("/oauth/token", async (req, res) => {
 });
 
 // Setup MCP endpoint
-app.post("/mcp", (req, res) => {
-    const auth = req.headers.authorization;
-    if (!auth) {
-        return res.status(401).send("Unauthorized");
-    }
+app.post("/mcp", async (req, res) => {
+    try {
+        const auth = req.headers.authorization;
+        if (!auth || !auth.startsWith('Bearer ')) {
+            return res.status(401).json({
+                isError: true,
+                content: [{ type: "text", text: "Unauthorized: Missing or invalid authorization header" }]
+            });
+        }
 
-    server.handle(req.body, {
-        transport: transportsStore.createTransport("/mcp", { token: auth } as AuthInfo, res),
-    });
+        const token = auth.replace('Bearer ', '');
+
+        try {
+            // Verify the token and get user info
+            const authInfo = await oauthProvider.verifyAccessToken(token);
+            console.log("Auth info for MCP call:", {
+                clientId: authInfo.clientId,
+                scopes: authInfo.scopes,
+                expiresAt: new Date(authInfo.expiresAt * 1000).toISOString()
+            });
+
+            // Create a transport with the verified auth info
+            const transport = transportsStore.createTransport("/mcp", authInfo, res);
+
+            // Handle the request
+            const result = await server.handle(req.body, { transport });
+            return res.json(result);
+        } catch (error) {
+            console.error("Token verification error:", error);
+            return res.status(401).json({
+                isError: true,
+                content: [{ type: "text", text: "Unauthorized: Invalid token" }]
+            });
+        }
+    } catch (error) {
+        console.error("MCP endpoint error:", error);
+        return res.status(500).json({
+            isError: true,
+            content: [{ type: "text", text: `Server error: ${error instanceof Error ? error.message : 'Unknown error'}` }]
+        });
+    }
 });
 
 // Start server

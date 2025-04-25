@@ -144,6 +144,12 @@ export class Tools {
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
+            // Check if GEMINI_API_KEY is configured
+            const geminiApiKey = process.env.GEMINI_API_KEY;
+            if (!geminiApiKey) {
+                throw new Error("GEMINI_API_KEY is not configured in the environment");
+            }
+
             // Get user information to personalize the prompt
             const userInfoResult = await this.getUserInfo(linkedinTokens);
             let userName = "professional";
@@ -155,6 +161,11 @@ export class Tools {
                 } catch (e) {
                     console.log("Error parsing user info, using default prompt");
                 }
+            }
+
+            // Validate image data
+            if (!imageBase64 || imageBase64.length < 100) {
+                throw new Error("Invalid image data provided");
             }
 
             // Enhanced prompt with LinkedIn-specific instructions
@@ -170,9 +181,16 @@ export class Tools {
             6. Format with appropriate line breaks for readability
             `;
 
+            console.log("Calling Gemini API for image analysis...");
+            console.log("Image type:", mimeType);
+            console.log("Image data length:", imageBase64.length);
+
+            // Format the image data properly - ensure it doesn't include the data:image prefix
+            const cleanedImageData = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
+
             // Call Gemini API for image analysis and content creation
             const response = await axios.post(
-                'https://generativelanguage.googleapis.com/v1/models/gemini-pro-vision:generateContent',
+                'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
                 {
                     contents: [
                         {
@@ -181,20 +199,40 @@ export class Tools {
                                 {
                                     inline_data: {
                                         mime_type: mimeType,
-                                        data: imageBase64
+                                        data: cleanedImageData
                                     }
                                 }
                             ]
                         }
-                    ]
+                    ],
+                    generationConfig: {
+                        temperature: 0.7,
+                        maxOutputTokens: 800,
+                        topP: 0.9
+                    }
                 },
                 {
-                    params: { key: process.env.GEMINI_API_KEY },
-                    headers: { 'Content-Type': 'application/json' }
+                    params: { key: geminiApiKey },
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 30000 // 30 second timeout for image processing
                 }
             );
 
+            // Validate and extract the response
+            if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
+                throw new Error("Invalid response from Gemini API: Missing candidates");
+            }
+
+            if (!response.data.candidates[0].content || !response.data.candidates[0].content.parts) {
+                throw new Error("Invalid response from Gemini API: Missing content");
+            }
+
             const generatedContent = response.data.candidates[0].content.parts[0].text;
+            if (!generatedContent) {
+                throw new Error("Gemini API returned empty content");
+            }
+
+            console.log("Successfully generated content with Gemini API");
 
             return {
                 content: [
@@ -206,11 +244,29 @@ export class Tools {
             };
         } catch (e: any) {
             console.error('Image analysis error:', e.response?.data || e.message);
+
+            // Detailed error handling for different scenarios
+            let errorMessage = "Unknown error occurred";
+
+            if (e.response?.data?.error) {
+                // Specific Gemini API error
+                errorMessage = `Gemini API error: ${e.response.data.error.message}`;
+                console.error('Gemini API error details:', e.response.data.error);
+            } else if (e.message === "Invalid image data provided") {
+                errorMessage = "The image data provided is invalid or too small. Please try a different image.";
+            } else if (e.message.includes("GEMINI_API_KEY")) {
+                errorMessage = "The server is not configured with a Gemini API key. Please contact the administrator.";
+            } else if (e.code === 'ECONNABORTED') {
+                errorMessage = "The request to Gemini API timed out. The image might be too large or complex.";
+            } else if (e.message) {
+                errorMessage = e.message;
+            }
+
             return {
                 isError: true,
                 content: [{
                     type: "text",
-                    text: `Error analyzing image: ${e.response?.data?.error?.message || e.message || 'Unknown error'}`
+                    text: `Error analyzing image: ${errorMessage}`
                 }]
             };
         }
