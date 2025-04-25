@@ -100,7 +100,8 @@ export interface OAuthServerProviderInterface {
 }
 
 export class OAuthServerProvider implements OAuthServerProviderInterface {
-    private _LINKEDIN_SCOPES = ["profile", "email", "openid", "w_member_social"];
+    // Updated scopes to match LinkedIn's current best practices for OpenID Connect
+    private _LINKEDIN_SCOPES = ["openid", "profile", "email", "w_member_social"];
     private _linkedinAuthClient: LinkedinAuthClient;
 
     private _clientsStore: ClientsStore;

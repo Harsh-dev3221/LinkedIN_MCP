@@ -45,8 +45,7 @@ const LinkedInAuth = ({ onAuthSuccess }: LinkedInAuthProps) => {
             `state=${state}&` +
             `code_challenge=${codeVerifier}&` +
             `code_challenge_method=plain&` +
-            `scope=profile%20email%20openid%20w_member_social`;
-
+            `scope=profile%20email%20openid%20w_member_social%20r_liteprofile`;
         window.location.href = authUrl;
     };
 

@@ -25,6 +25,11 @@ export class Tools {
     private readonly LINKEDIN_API_VERSION = '202504'; // Most current version as of April 2025
     private readonly LINKEDIN_PROTOCOL_VERSION = '2.0.0';
 
+    // Define field projections to match permission scopes
+    private readonly BASE_FIELDS = '(id,localizedFirstName,localizedLastName)';
+    private readonly PROFILE_PIC_FIELDS = 'profilePicture(displayImage~:playableStreams)';
+    private readonly EMAIL_FIELDS = 'emailAddress';
+
     /**
      * Get user profile information from LinkedIn using minimal projection
      * to avoid permission issues. Using localizedFirstName and localizedLastName
@@ -35,8 +40,9 @@ export class Tools {
     ): Promise<CallToolResult> => {
         try {
             // Use specific field projection to minimize permission requirements
+            // Only request fields covered by the 'profile' scope
             const response = await axios.get(
-                'https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName,profilePicture(displayImage~:playableStreams))',
+                `https://api.linkedin.com/v2/me?projection=${this.BASE_FIELDS},${this.PROFILE_PIC_FIELDS}`,
                 {
                     headers: this.getLinkedInHeaders(linkedinTokens.access_token)
                 }
@@ -68,41 +74,7 @@ export class Tools {
                 ]
             };
         } catch (e: any) {
-            if (axios.isAxiosError(e)) {
-                console.error('LinkedIn getUserInfo error details:', {
-                    status: e.response?.status,
-                    statusText: e.response?.statusText,
-                    data: e.response?.data,
-                    headers: e.config?.headers,
-                    url: e.config?.url
-                });
-
-                // Check for specific LinkedIn API error patterns
-                if (e.response?.status === 403 && e.response?.data?.message?.includes('NO_VERSION')) {
-                    return {
-                        isError: true,
-                        content: [{
-                            type: "text",
-                            text: "LinkedIn API version error: Please verify the application's API version settings. Current API version may be deprecated."
-                        }]
-                    };
-                }
-
-                if (e.response?.status === 401) {
-                    return {
-                        isError: true,
-                        content: [{
-                            type: "text",
-                            text: "LinkedIn authentication error: Your access token may have expired. Please log in again."
-                        }]
-                    };
-                }
-            }
-
-            return {
-                isError: true,
-                content: [{ type: "text", text: `Error getting user info: ${e.message || 'Unknown error'}` }]
-            };
+            return this.handleLinkedInError(e, 'profile retrieval');
         }
     }
 
@@ -154,36 +126,237 @@ export class Tools {
                 ]
             };
         } catch (e: any) {
-            if (axios.isAxiosError(e)) {
-                console.error('LinkedIn post creation error details:', {
-                    status: e.response?.status,
-                    statusText: e.response?.statusText,
-                    data: e.response?.data,
-                    headers: e.config?.headers,
-                    url: e.config?.url
-                });
+            return this.handleLinkedInError(e, 'post creation');
+        }
+    }
 
-                // Check for specific LinkedIn API error patterns
-                if (e.response?.status === 403) {
-                    if (e.response?.data?.message?.includes('permission')) {
-                        return {
-                            isError: true,
-                            content: [{
-                                type: "text",
-                                text: "LinkedIn permission error: Your account doesn't have permission to post content. Please verify you've granted the w_member_social scope."
-                            }]
-                        };
-                    }
+    /**
+     * Create a post with the newer /rest/posts endpoint (versus legacy /shares)
+     * Requires w_member_social scope
+     */
+    public createPostV2 = async (
+        { content, visibility = "PUBLIC" }: { content: string, visibility?: "PUBLIC" | "CONNECTIONS" },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            // Get user ID with minimal projection
+            const userId = await this.getUserId(linkedinTokens);
+
+            // Using newer REST Posts API
+            const postData = {
+                author: `urn:li:person:${userId}`,
+                commentary: content,
+                visibility: visibility,
+                distribution: {
+                    feedDistribution: "MAIN_FEED",
+                    targetEntities: [],
+                    thirdPartyDistributionChannels: []
+                },
+                lifecycleState: "PUBLISHED",
+                isReshareDisabledByAuthor: false
+            };
+
+            console.log('Creating LinkedIn post (v2) with data:', JSON.stringify(postData, null, 2));
+
+            const response = await axios.post(
+                'https://api.linkedin.com/rest/posts',
+                postData,
+                {
+                    headers: this.getLinkedInHeaders(linkedinTokens.access_token)
                 }
-            }
+            );
+
+            console.log('LinkedIn post created successfully with Posts API, response:', response.data);
 
             return {
-                isError: true,
-                content: [{
-                    type: "text",
-                    text: `Error creating LinkedIn post: ${e.response?.data?.message || e.message || 'Unknown error'}`
-                }]
+                content: [
+                    {
+                        type: "text",
+                        text: `Post successfully published to LinkedIn! Post URN: ${response.data.id || 'Created'}`
+                    }
+                ]
             };
+        } catch (e: any) {
+            return this.handleLinkedInError(e, 'post creation (v2)');
+        }
+    }
+
+    /**
+     * Update an existing post
+     * Requires w_member_social scope
+     */
+    public updatePost = async (
+        { postUrn, content }: { postUrn: string, content: string },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            const updateData = {
+                commentary: content
+            };
+
+            console.log(`Updating LinkedIn post ${postUrn}`);
+
+            const response = await axios.patch(
+                `https://api.linkedin.com/rest/posts/${encodeURIComponent(postUrn)}`,
+                updateData,
+                {
+                    headers: this.getLinkedInHeaders(linkedinTokens.access_token)
+                }
+            );
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Post updated successfully!`
+                    }
+                ]
+            };
+        } catch (e: any) {
+            return this.handleLinkedInError(e, 'post update');
+        }
+    }
+
+    /**
+     * Delete an existing post
+     * Requires w_member_social scope
+     */
+    public deletePost = async (
+        { postUrn }: { postUrn: string },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            console.log(`Deleting LinkedIn post ${postUrn}`);
+
+            await axios.delete(
+                `https://api.linkedin.com/rest/posts/${encodeURIComponent(postUrn)}`,
+                {
+                    headers: this.getLinkedInHeaders(linkedinTokens.access_token)
+                }
+            );
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Post deleted successfully!`
+                    }
+                ]
+            };
+        } catch (e: any) {
+            return this.handleLinkedInError(e, 'post deletion');
+        }
+    }
+
+    /**
+     * Initialize image upload to LinkedIn
+     * Returns upload URL and asset URN for the next step
+     * Requires w_member_social scope
+     */
+    public initImageUpload = async (
+        { description = "Image upload" }: { description?: string },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            const userId = await this.getUserId(linkedinTokens);
+
+            const initRequest = {
+                initializeUploadRequest: {
+                    owner: `urn:li:person:${userId}`,
+                    purpose: "SHARE",
+                    fileFormat: "image/jpeg",
+                    fileSize: 1024 * 1024 // 1MB placeholder, will be adjusted with actual size
+                }
+            };
+
+            const response = await axios.post(
+                'https://api.linkedin.com/rest/images?action=initializeUpload',
+                initRequest,
+                {
+                    headers: {
+                        ...this.getLinkedInHeaders(linkedinTokens.access_token),
+                        'LinkedIn-Action': 'initializeUpload'
+                    }
+                }
+            );
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: JSON.stringify({
+                            uploadUrl: response.data.value.uploadUrl,
+                            imageUrn: response.data.value.image
+                        })
+                    }
+                ]
+            };
+        } catch (e: any) {
+            return this.handleLinkedInError(e, 'image upload initialization');
+        }
+    }
+
+    /**
+     * Create a post with an image
+     * Requires initializing the image upload first with initImageUpload
+     * Requires w_member_social scope
+     */
+    public createImagePost = async (
+        {
+            content,
+            imageUrn,
+            title = "",
+            visibility = "PUBLIC"
+        }: {
+            content: string,
+            imageUrn: string,
+            title?: string,
+            visibility?: "PUBLIC" | "CONNECTIONS"
+        },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            const userId = await this.getUserId(linkedinTokens);
+
+            const postData = {
+                author: `urn:li:person:${userId}`,
+                commentary: content,
+                visibility: visibility,
+                distribution: {
+                    feedDistribution: "MAIN_FEED",
+                    targetEntities: [],
+                    thirdPartyDistributionChannels: []
+                },
+                content: {
+                    media: {
+                        title: title,
+                        id: imageUrn
+                    }
+                },
+                lifecycleState: "PUBLISHED",
+                isReshareDisabledByAuthor: false
+            };
+
+            console.log('Creating LinkedIn image post with data:', JSON.stringify(postData, null, 2));
+
+            const response = await axios.post(
+                'https://api.linkedin.com/rest/posts',
+                postData,
+                {
+                    headers: this.getLinkedInHeaders(linkedinTokens.access_token)
+                }
+            );
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Image post successfully published to LinkedIn! Post URN: ${response.data.id || 'Created'}`
+                    }
+                ]
+            };
+        } catch (e: any) {
+            return this.handleLinkedInError(e, 'image post creation');
         }
     }
 
@@ -217,28 +390,85 @@ export class Tools {
 
             return response.data.id;
         } catch (error) {
-            if (axios.isAxiosError(error)) {
-                console.error('LinkedIn getUserId error details:', {
-                    status: error.response?.status,
-                    statusText: error.response?.statusText,
-                    data: error.response?.data,
-                    headers: error.config?.headers,
-                    url: error.config?.url
-                });
-
-                // Check for token expiration or version issues
-                if (error.response?.status === 401) {
-                    throw new Error('LinkedIn authentication failed: Your access token may have expired');
-                }
-
-                if (error.response?.status === 403 && error.response?.data?.message?.includes('NO_VERSION')) {
-                    throw new Error('LinkedIn API version error: API version may be deprecated');
-                }
-            }
-
+            // Log the error but rethrow it so the calling method can handle it
             console.error('Error getting user ID:', error);
             throw error;
         }
+    }
+
+    /**
+     * Centralized handler for LinkedIn API errors
+     * Maps specific error codes and messages to user-friendly responses
+     */
+    private handleLinkedInError(error: any, operation: string): CallToolResult {
+        if (axios.isAxiosError(error)) {
+            const status = error.response?.status;
+            const data = error.response?.data;
+
+            console.error(`LinkedIn ${operation} error details:`, {
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                headers: error.config?.headers,
+                url: error.config?.url
+            });
+
+            if (status === 403) {
+                // Parse error message
+                const errorMessage = data?.message || '';
+
+                if (errorMessage.includes('NO_VERSION')) {
+                    // This is actually a field permission error
+                    return {
+                        isError: true,
+                        content: [{
+                            type: "text",
+                            text: `LinkedIn API permission error: Cannot access one or more requested fields. Your application may need additional permission scopes.`
+                        }]
+                    };
+                }
+
+                if (errorMessage.includes('PERMISSION_DENIED') || errorMessage.includes('permission')) {
+                    return {
+                        isError: true,
+                        content: [{
+                            type: "text",
+                            text: `LinkedIn permission denied for ${operation}. Your account doesn't have permission to perform this action.`
+                        }]
+                    };
+                }
+            }
+
+            if (status === 401) {
+                // Token expired or invalid
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `Your LinkedIn session has expired. Please sign in again.`
+                    }]
+                };
+            }
+
+            if (status === 429) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `LinkedIn API rate limit exceeded. Please try again later.`
+                    }]
+                };
+            }
+        }
+
+        // Default error
+        return {
+            isError: true,
+            content: [{
+                type: "text",
+                text: `Error during LinkedIn ${operation}: ${error.message || 'Unknown error'}`
+            }]
+        };
     }
 
     // Analyze image and create LinkedIn post content
