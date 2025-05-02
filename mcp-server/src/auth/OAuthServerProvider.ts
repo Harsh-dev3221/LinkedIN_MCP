@@ -256,10 +256,25 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
                 throw new Error('LinkedIn response missing access_token');
             }
 
+            // Log and validate the scopes returned in the response
+            const returnedScopes = response.data.scope || '';
+            console.log('LinkedIn returned scopes:', returnedScopes);
+
+            // Check if r_liteprofile is included in the scopes
+            if (!returnedScopes.includes('r_liteprofile')) {
+                console.warn('Warning: r_liteprofile scope not granted. Profile API calls may fail.');
+            }
+
+            // Check if w_member_social is included in the scopes
+            if (!returnedScopes.includes('w_member_social')) {
+                console.warn('Warning: w_member_social scope not granted. Post creation will fail.');
+            }
+
             return {
                 access_token: response.data.access_token,
                 expires_in: response.data.expires_in || 3600,
-                refresh_token: response.data.refresh_token || null
+                refresh_token: response.data.refresh_token || null,
+                scope: returnedScopes // Store the scope information for later verification
             };
         } catch (error) {
             if (axios.isAxiosError(error)) {

@@ -166,7 +166,7 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.createPost({ content }, linkedinTokens);
+        return tools.createUgcPost({ content }, linkedinTokens);
     }
 );
 
@@ -195,6 +195,108 @@ server.tool(
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
         return tools.analyzeImageAndCreateContent({ imageBase64, prompt, mimeType }, linkedinTokens);
+    }
+);
+
+// Register create-image-post tool
+server.tool(
+    "create-image-post",
+    "Create a post with an image on LinkedIn using UGC Posts endpoint",
+    {
+        content: z.string(),
+        imageUrn: z.string(),
+        title: z.string().optional(),
+        visibility: z.enum(["PUBLIC", "CONNECTIONS"]).optional()
+    },
+    async ({ content, imageUrn, title, visibility }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.createUgcImagePost({ content, imageUrn, title, visibility }, linkedinTokens);
+    }
+);
+
+// Register init-image-upload tool
+server.tool(
+    "init-image-upload",
+    "Initialize an image upload to LinkedIn",
+    {
+        description: z.string().optional()
+    },
+    async ({ description }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.initImageUpload({ description }, linkedinTokens);
+    }
+);
+
+// Register analyze-image-and-post tool
+server.tool(
+    "analyze-image-and-post",
+    "Analyze an image and create a LinkedIn post with the generated content using UGC Posts endpoint",
+    {
+        imageBase64: z.string(),
+        prompt: z.string(),
+        mimeType: z.string(),
+        visibility: z.enum(["PUBLIC", "CONNECTIONS"]).optional()
+    },
+    async ({ imageBase64, prompt, mimeType, visibility }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+
+        // First analyze the image and generate content
+        const contentResult = await tools.analyzeImageAndCreateContent(
+            { imageBase64, prompt, mimeType },
+            linkedinTokens
+        );
+
+        if (contentResult.isError) {
+            return contentResult;
+        }
+
+        // Extract the generated content
+        const generatedContent = contentResult.content[0].text;
+
+        // Strip out any notes about character limits that might have been added
+        const cleanContent = generatedContent.split("\n\nNote: This generated content is")[0];
+
+        // Create the post using UGC Posts endpoint
+        return tools.createUgcPost({ content: cleanContent, visibility }, linkedinTokens);
     }
 );
 

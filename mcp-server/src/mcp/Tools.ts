@@ -22,7 +22,7 @@ interface OAuthTokens {
 
 export class Tools {
     // LinkedIn API version to use for all requests - updated to latest based on deprecation timeline
-    private readonly LINKEDIN_API_VERSION = '202504'; // Most current version as of April 2025
+    private readonly LINKEDIN_API_VERSION = '202405'; // Most current version as of May 2024
     private readonly LINKEDIN_PROTOCOL_VERSION = '2.0.0';
 
     // Define field projections to match permission scopes
@@ -31,45 +31,95 @@ export class Tools {
     private readonly EMAIL_FIELDS = 'emailAddress';
 
     /**
-     * Get user profile information from LinkedIn using minimal projection
-     * to avoid permission issues. Using localizedFirstName and localizedLastName
-     * which are accessible with the 'profile' scope.
+     * Helper method to get headers specifically for OpenID Connect endpoints
+     * These endpoints don't require LinkedIn-Version header
+     */
+    private getOpenIDHeaders(accessToken: string) {
+        return {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+            // Note: OpenID Connect endpoints don't use LinkedIn-Version or X-Restli-Protocol-Version
+        };
+    }
+
+    /**
+     * Get user profile information using OpenID Connect userinfo endpoint
+     * This endpoint is recommended for Sign In with LinkedIn via OpenID Connect
+     */
+    private async getUserInfoWithOpenID(accessToken: string): Promise<any> {
+        try {
+            const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
+                headers: this.getOpenIDHeaders(accessToken)
+            });
+
+            return {
+                id: response.data.sub,
+                firstName: response.data.given_name || '',
+                lastName: response.data.family_name || '',
+                profilePictureUrl: response.data.picture || null,
+                email: response.data.email || null,
+                locale: response.data.locale || null,
+                name: response.data.name || null
+            };
+        } catch (error) {
+            console.error('Error getting user info with OpenID Connect:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get user profile information from LinkedIn
+     * Uses OpenID Connect userinfo endpoint if OpenID scope is detected
+     * Falls back to /v2/me endpoint with r_liteprofile scope otherwise
      */
     public getUserInfo = async (
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
-            // Use specific field projection to minimize permission requirements
-            // Only request fields covered by the 'profile' scope
-            const response = await axios.get(
-                `https://api.linkedin.com/v2/me?projection=${this.BASE_FIELDS},${this.PROFILE_PIC_FIELDS}`,
-                {
-                    headers: this.getLinkedInHeaders(linkedinTokens.access_token)
+            // Check if we're using OpenID Connect (scope contains "openid")
+            const isOpenIDConnect = linkedinTokens.scope && linkedinTokens.scope.includes('openid');
+            let userData;
+
+            if (isOpenIDConnect) {
+                console.log('Using OpenID Connect userinfo endpoint for profile information');
+                userData = await this.getUserInfoWithOpenID(linkedinTokens.access_token);
+            } else {
+                // Verify scope information if available
+                if (linkedinTokens.scope && !linkedinTokens.scope.includes('r_liteprofile')) {
+                    console.warn('Warning: r_liteprofile scope not granted. Profile API calls may fail.');
                 }
-            );
 
-            const userData = response.data;
-            const firstName = userData.localizedFirstName || '';
-            const lastName = userData.localizedLastName || '';
+                // Use correct projection syntax as per LinkedIn API documentation
+                const response = await axios.get(
+                    `https://api.linkedin.com/v2/me?projection=(id,firstName,lastName,profilePicture(displayImage~:playableStreams))`,
+                    {
+                        headers: this.getLinkedInHeaders(linkedinTokens.access_token)
+                    }
+                );
 
-            let profilePictureUrl = null;
-            if (userData.profilePicture &&
-                userData.profilePicture['displayImage~'] &&
-                userData.profilePicture['displayImage~'].elements &&
-                userData.profilePicture['displayImage~'].elements.length > 0) {
-                profilePictureUrl = userData.profilePicture['displayImage~'].elements[0].identifiers[0].identifier;
+                const rawData = response.data;
+
+                // Access localized name using the correct path
+                userData = {
+                    id: rawData.id,
+                    firstName: rawData.firstName?.localized?.['en_US'] || '',
+                    lastName: rawData.lastName?.localized?.['en_US'] || '',
+                    profilePictureUrl: null
+                };
+
+                if (rawData.profilePicture &&
+                    rawData.profilePicture['displayImage~'] &&
+                    rawData.profilePicture['displayImage~'].elements &&
+                    rawData.profilePicture['displayImage~'].elements.length > 0) {
+                    userData.profilePictureUrl = rawData.profilePicture['displayImage~'].elements[0].identifiers[0].identifier;
+                }
             }
 
             return {
                 content: [
                     {
                         type: "text",
-                        text: JSON.stringify({
-                            id: userData.id,
-                            firstName,
-                            lastName,
-                            profilePictureUrl
-                        })
+                        text: JSON.stringify(userData)
                     }
                 ]
             };
@@ -90,7 +140,8 @@ export class Tools {
             // Get user ID with minimal projection
             const userId = await this.getUserId(linkedinTokens);
 
-            // Using LinkedIn Share API v2
+            // Using LinkedIn Share API v2 with corrected request structure
+            // Required fields only, removed unsupported fields
             const postData = {
                 owner: `urn:li:person:${userId}`,
                 text: {
@@ -100,9 +151,9 @@ export class Tools {
                     feedDistribution: 'MAIN_FEED',
                     targetEntities: [],
                     thirdPartyDistributionChannels: []
-                },
-                lifecycleState: 'PUBLISHED',
-                visibility: 'PUBLIC'
+                }
+                // Note: lifecycleState and visibility fields are removed
+                // LinkedIn automatically handles publishing with w_member_social scope
             };
 
             console.log('Creating LinkedIn post with data:', JSON.stringify(postData, null, 2));
@@ -142,18 +193,18 @@ export class Tools {
             // Get user ID with minimal projection
             const userId = await this.getUserId(linkedinTokens);
 
-            // Using newer REST Posts API
+            // Using newer REST Posts API with corrected request structure
+            // Removed unsupported fields: lifecycleState and visibility
             const postData = {
                 author: `urn:li:person:${userId}`,
                 commentary: content,
-                visibility: visibility,
                 distribution: {
                     feedDistribution: "MAIN_FEED",
                     targetEntities: [],
                     thirdPartyDistributionChannels: []
-                },
-                lifecycleState: "PUBLISHED",
-                isReshareDisabledByAuthor: false
+                }
+                // Note: lifecycleState and visibility are removed as they're not supported
+                // LinkedIn automatically handles publishing with w_member_social scope
             };
 
             console.log('Creating LinkedIn post (v2) with data:', JSON.stringify(postData, null, 2));
@@ -318,10 +369,11 @@ export class Tools {
         try {
             const userId = await this.getUserId(linkedinTokens);
 
+            // Restructured to comply with LinkedIn Share API schema
+            // Removed unsupported fields: lifecycleState, visibility, isReshareDisabledByAuthor
             const postData = {
                 author: `urn:li:person:${userId}`,
                 commentary: content,
-                visibility: visibility,
                 distribution: {
                     feedDistribution: "MAIN_FEED",
                     targetEntities: [],
@@ -332,9 +384,8 @@ export class Tools {
                         title: title,
                         id: imageUrn
                     }
-                },
-                lifecycleState: "PUBLISHED",
-                isReshareDisabledByAuthor: false
+                }
+                // LinkedIn automatically handles publishing with w_member_social scope
             };
 
             console.log('Creating LinkedIn image post with data:', JSON.stringify(postData, null, 2));
@@ -368,27 +419,48 @@ export class Tools {
         return {
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
-            'LinkedIn-Version': this.LINKEDIN_API_VERSION,
+            'LinkedIn-Version': this.LINKEDIN_API_VERSION, // Required for Share API and most LinkedIn endpoints
             'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
         };
     }
 
     /**
      * Get user ID with minimal projection to reduce permission requirements
-     * Only requests the ID field explicitly
+     * Uses OpenID Connect userinfo endpoint if OpenID scope is detected
      */
     private getUserId = async (linkedinTokens: OAuthTokens): Promise<string> => {
         try {
-            // Only request the specific fields you need with explicit projection
-            const response = await axios.get('https://api.linkedin.com/v2/me?projection=(id)', {
-                headers: this.getLinkedInHeaders(linkedinTokens.access_token)
-            });
+            // Check if we're using OpenID Connect
+            const isOpenIDConnect = linkedinTokens.scope && linkedinTokens.scope.includes('openid');
 
-            if (!response.data || !response.data.id) {
-                throw new Error('LinkedIn API returned invalid user data (missing ID)');
+            if (isOpenIDConnect) {
+                // For OpenID Connect, use the userinfo endpoint
+                const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
+                    headers: this.getOpenIDHeaders(linkedinTokens.access_token)
+                });
+
+                if (!response.data || !response.data.sub) {
+                    throw new Error('LinkedIn API returned invalid user data (missing ID in userinfo)');
+                }
+
+                return response.data.sub; // OpenID Connect uses 'sub' as the user identifier
+            } else {
+                // Check scope for traditional OAuth flow
+                if (linkedinTokens.scope && !linkedinTokens.scope.includes('r_liteprofile')) {
+                    console.warn('Warning: r_liteprofile scope not granted. Profile API calls may fail.');
+                }
+
+                // Only request the specific fields you need with explicit projection
+                const response = await axios.get('https://api.linkedin.com/v2/me?projection=(id)', {
+                    headers: this.getLinkedInHeaders(linkedinTokens.access_token)
+                });
+
+                if (!response.data || !response.data.id) {
+                    throw new Error('LinkedIn API returned invalid user data (missing ID)');
+                }
+
+                return response.data.id;
             }
-
-            return response.data.id;
         } catch (error) {
             // Log the error but rethrow it so the calling method can handle it
             console.error('Error getting user ID:', error);
@@ -413,27 +485,79 @@ export class Tools {
                 url: error.config?.url
             });
 
+            if (status === 500) {
+                // Check if this might be a character limit issue with the shares endpoint
+                const url = error.config?.url || '';
+                if (url.includes('/v2/shares')) {
+                    // Extract the text content to check length
+                    try {
+                        const requestBody = JSON.parse(error.config?.data || '{}');
+                        const textContent = requestBody.text?.text || '';
+                        if (textContent.length > 1300) {
+                            return {
+                                isError: true,
+                                content: [{
+                                    type: "text",
+                                    text: `LinkedIn API error: Your post exceeds the 1,300 character limit for the /v2/shares endpoint. We've updated our implementation to use the /v2/ugcPosts endpoint which supports up to 3,000 characters. Please try again.`
+                                }]
+                            };
+                        }
+                    } catch (e) {
+                        console.error('Error parsing request body:', e);
+                    }
+                }
+
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `LinkedIn API reported an internal server error. Please try again later or try using the UGC Posts endpoint which is more reliable.`
+                    }]
+                };
+            }
+
             if (status === 403) {
                 // Parse error message
                 const errorMessage = data?.message || '';
 
-                if (errorMessage.includes('NO_VERSION')) {
-                    // This is actually a field permission error
+                if (errorMessage.includes('Unpermitted fields present in REQUEST_BODY')) {
                     return {
                         isError: true,
                         content: [{
                             type: "text",
-                            text: `LinkedIn API permission error: Cannot access one or more requested fields. Your application may need additional permission scopes.`
+                            text: `LinkedIn API error: Your request contains unsupported fields. We've updated our implementation to remove fields like 'lifecycleState' and 'visibility' which are not permitted in Share API requests. Alternatively, try the UGC Posts endpoint which has a more consistent schema.`
+                        }]
+                    };
+                }
+
+                if (errorMessage.includes('NO_VERSION')) {
+                    return {
+                        isError: true,
+                        content: [{
+                            type: "text",
+                            text: `LinkedIn API error: For OpenID Connect, the API version header may be causing issues. We've updated the implementation to use the recommended OpenID Connect endpoints.`
                         }]
                     };
                 }
 
                 if (errorMessage.includes('PERMISSION_DENIED') || errorMessage.includes('permission')) {
+                    // Check if we're trying to access /v2/me with an OpenID token
+                    const url = error.config?.url || '';
+                    if (url.includes('/v2/me')) {
+                        return {
+                            isError: true,
+                            content: [{
+                                type: "text",
+                                text: `LinkedIn permission denied for ${operation}. You appear to be using OpenID Connect authentication but trying to access the /v2/me endpoint. We've updated the implementation to use the OpenID Connect userinfo endpoint.`
+                            }]
+                        };
+                    }
+
                     return {
                         isError: true,
                         content: [{
                             type: "text",
-                            text: `LinkedIn permission denied for ${operation}. Your account doesn't have permission to perform this action.`
+                            text: `LinkedIn permission denied for ${operation}. Please check that your LinkedIn account has granted the required permissions: For OpenID Connect, use "openid", "profile", and "email" scopes. For posting, ensure "w_member_social" is granted.`
                         }]
                     };
                 }
@@ -445,7 +569,7 @@ export class Tools {
                     isError: true,
                     content: [{
                         type: "text",
-                        text: `Your LinkedIn session has expired. Please sign in again.`
+                        text: `Your LinkedIn session has expired. Please sign in again to reconnect your account.`
                     }]
                 };
             }
@@ -456,6 +580,30 @@ export class Tools {
                     content: [{
                         type: "text",
                         text: `LinkedIn API rate limit exceeded. Please try again later.`
+                    }]
+                };
+            }
+
+            if (status === 400) {
+                const errorMessage = data?.message || '';
+                if (errorMessage.includes('Invalid URN')) {
+                    return {
+                        isError: true,
+                        content: [{
+                            type: "text",
+                            text: `LinkedIn API error: Invalid resource identifier (URN). Please check that the image URN or other identifiers are correctly formatted.`
+                        }]
+                    };
+                }
+            }
+
+            // General error with response message
+            if (data?.message) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `LinkedIn API error (${status}): ${data.message}`
                     }]
                 };
             }
@@ -508,7 +656,7 @@ export class Tools {
             Guidelines for the LinkedIn post:
             1. Keep it professional and engaging
             2. Include relevant hashtags (3-5 max)
-            3. Aim for 150-250 words
+            3. Aim for 150-250 words (staying under 3000 characters for LinkedIn's limit)
             4. Include a clear call-to-action
             5. Maintain a positive and professional tone
             6. Format with appropriate line breaks for readability
@@ -565,13 +713,23 @@ export class Tools {
                 throw new Error("Gemini API returned empty content");
             }
 
+            // Add a note about using UGC Posts for longer content
+            const contentLength = generatedContent.length;
+            let noteAboutLength = "";
+
+            if (contentLength > 1300) {
+                noteAboutLength = "\n\nNote: This generated content is " + contentLength +
+                    " characters, which exceeds LinkedIn's 1,300 character limit for the legacy /shares endpoint. " +
+                    "Please use the 'Create UGC Post' feature instead, which supports up to 3,000 characters.";
+            }
+
             console.log("Successfully generated content with Gemini API");
 
             return {
                 content: [
                     {
                         type: "text",
-                        text: generatedContent,
+                        text: generatedContent + noteAboutLength,
                     }
                 ]
             };
@@ -602,6 +760,151 @@ export class Tools {
                     text: `Error analyzing image: ${errorMessage}`
                 }]
             };
+        }
+    }
+
+    /**
+     * Create a post using LinkedIn's modern UGC Posts endpoint
+     * This endpoint supports longer text (up to 3000 characters) and is the recommended way to create posts
+     * Requires w_member_social scope
+     */
+    public createUgcPost = async (
+        { content, visibility = "PUBLIC" }: { content: string, visibility?: "PUBLIC" | "CONNECTIONS" },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            // Get user ID with minimal projection
+            const userId = await this.getUserId(linkedinTokens);
+
+            // Using the recommended UGC Posts endpoint with the correct structure
+            const visibilityValue = visibility === "CONNECTIONS" ? "CONNECTIONS" : "PUBLIC";
+
+            const postData = {
+                author: `urn:li:person:${userId}`,
+                lifecycleState: "PUBLISHED",
+                specificContent: {
+                    "com.linkedin.ugc.ShareContent": {
+                        shareCommentary: {
+                            text: content
+                        },
+                        shareMediaCategory: "NONE"
+                    }
+                },
+                visibility: {
+                    "com.linkedin.ugc.MemberNetworkVisibility": visibilityValue
+                }
+            };
+
+            console.log('Creating LinkedIn UGC post with data:', JSON.stringify(postData, null, 2));
+
+            // Note: LinkedIn-Version header is not required for ugcPosts endpoint
+            const response = await axios.post(
+                'https://api.linkedin.com/v2/ugcPosts',
+                postData,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${linkedinTokens.access_token}`,
+                        'Content-Type': 'application/json',
+                        'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
+                    }
+                }
+            );
+
+            console.log('LinkedIn UGC post created successfully, response:', response.data);
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Post successfully published to LinkedIn! Post URN: ${response.data.id || 'Created'}`
+                    }
+                ]
+            };
+        } catch (e: any) {
+            return this.handleLinkedInError(e, 'UGC post creation');
+        }
+    }
+
+    /**
+     * Create a post with an image using LinkedIn's modern UGC Posts endpoint
+     * This endpoint supports longer text (up to 3000 characters) and is the recommended way to create posts with media
+     * Requires initializing the image upload first with initImageUpload
+     * Requires w_member_social scope
+     */
+    public createUgcImagePost = async (
+        {
+            content,
+            imageUrn,
+            title = "",
+            visibility = "PUBLIC"
+        }: {
+            content: string,
+            imageUrn: string,
+            title?: string,
+            visibility?: "PUBLIC" | "CONNECTIONS"
+        },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            const userId = await this.getUserId(linkedinTokens);
+            const visibilityValue = visibility === "CONNECTIONS" ? "CONNECTIONS" : "PUBLIC";
+
+            // Properly formatted UGC post with media
+            const postData = {
+                author: `urn:li:person:${userId}`,
+                lifecycleState: "PUBLISHED",
+                specificContent: {
+                    "com.linkedin.ugc.ShareContent": {
+                        shareCommentary: {
+                            text: content
+                        },
+                        shareMediaCategory: "IMAGE",
+                        media: [
+                            {
+                                status: "READY",
+                                description: {
+                                    text: title || "Shared image"
+                                },
+                                media: imageUrn,
+                                title: {
+                                    text: title || "Image"
+                                }
+                            }
+                        ]
+                    }
+                },
+                visibility: {
+                    "com.linkedin.ugc.MemberNetworkVisibility": visibilityValue
+                }
+            };
+
+            console.log('Creating LinkedIn UGC image post with data:', JSON.stringify(postData, null, 2));
+
+            // Note: LinkedIn-Version header is not required for ugcPosts endpoint
+            const response = await axios.post(
+                'https://api.linkedin.com/v2/ugcPosts',
+                postData,
+                {
+                    headers: {
+                        'Authorization': `Bearer ${linkedinTokens.access_token}`,
+                        'Content-Type': 'application/json',
+                        'X-Restli-Protocol-Version': this.LINKEDIN_PROTOCOL_VERSION
+                    }
+                }
+            );
+
+            console.log('LinkedIn UGC image post created successfully, response:', response.data);
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Image post successfully published to LinkedIn! Post URN: ${response.data.id || 'Created'}`
+                    }
+                ]
+            };
+        } catch (e: any) {
+            return this.handleLinkedInError(e, 'UGC image post creation');
         }
     }
 
