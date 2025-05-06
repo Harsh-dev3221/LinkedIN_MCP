@@ -30,9 +30,12 @@ LinkedIn MCP integrates with LinkedIn's API to provide a streamlined content pub
 
 ## ✨ Features
 
-- **LinkedIn Authentication**: Secure OAuth-based authentication
+- **LinkedIn Authentication**: 
+  - Secure OAuth-based authentication
+  - OpenID Connect support
+  - Proper scope validation and management
 - **Post Management**:
-  - Create text-based posts
+  - Create text-based posts (supports up to 3,000 characters)
   - Update existing posts
   - Delete posts
   - Control post visibility (public/connections)
@@ -43,9 +46,14 @@ LinkedIn MCP integrates with LinkedIn's API to provide a streamlined content pub
 - **Content Generation**:
   - AI-generated content based on image analysis using Gemini AI
   - Personalized content based on user profile
+  - One-step image analysis and posting
 - **User Information**:
-  - Retrieve profile details
+  - Retrieve profile details via OpenID Connect
   - Access profile pictures
+- **Advanced Error Handling**:
+  - Detailed LinkedIn API error diagnostics
+  - Character limit detection
+  - Permissions and scope validation
 
 ## 🏗️ Architecture
 
@@ -67,7 +75,7 @@ LinkedIn MCP integrates with LinkedIn's API to provide a streamlined content pub
 
 ### Data Flow
 
-1. User authenticates via the frontend using LinkedIn OAuth
+1. User authenticates via the frontend using LinkedIn OAuth/OpenID Connect
 2. Authentication tokens are stored in the MCP server
 3. User can perform actions (create posts, upload images) via the frontend
 4. MCP server processes requests and communicates with LinkedIn API
@@ -119,11 +127,12 @@ npm install
 # Server Configuration
 PORT=3000
 NODE_ENV=development
+SERVER_URL=http://localhost:3000
+CORS_ALLOWED_ORIGIN=http://localhost:5173
 
 # LinkedIn OAuth
 LINKEDIN_CLIENT_ID=your_linkedin_client_id
 LINKEDIN_CLIENT_SECRET=your_linkedin_client_secret
-LINKEDIN_REDIRECT_URI=http://localhost:3000/oauth/callback
 
 # Gemini API
 GEMINI_API_KEY=your_gemini_api_key
@@ -142,10 +151,10 @@ VITE_LINKEDIN_AUTH_URL=http://localhost:3000/oauth/authorize
 2. Configure OAuth settings:
    - Add redirect URL: `http://localhost:3000/oauth/callback`
    - Request the following permissions:
-     - `r_liteprofile` (Basic profile)
-     - `r_emailaddress` (Email address)
-     - `w_member_social` (Create/manage posts)
+     - OpenID Connect scopes: `openid`, `profile`, `email` 
+     - Content creation: `w_member_social`
 3. Get your Client ID and Client Secret
+4. Ensure your app is properly configured in the Products tab and verified if necessary
 
 ## 🚀 Usage
 
@@ -167,11 +176,11 @@ Access the application at `http://localhost:5173` (or the port configured by Vit
 
 1. **Authentication**:
    - Click "Login with LinkedIn" on the homepage
-   - Authorize the application
+   - Authorize the application with the requested permissions
 
 2. **Creating Posts**:
    - Navigate to "Create Post"
-   - Enter your content
+   - Enter your content (up to 3,000 characters)
    - Choose visibility
    - Click "Post"
 
@@ -182,7 +191,14 @@ Access the application at `http://localhost:5173` (or the port configured by Vit
    - Optionally use AI-generated content
    - Click "Post"
 
-4. **Managing Posts**:
+4. **AI-Powered Posts**:
+   - Upload an image
+   - Provide instructions for content generation
+   - Review the generated content
+   - Post directly or edit as needed
+   - Posts are created using LinkedIn's modern UGC Posts endpoint
+
+5. **Managing Posts**:
    - View your posts in the "My Posts" section
    - Edit or delete posts as needed
 
@@ -194,49 +210,31 @@ Access the application at `http://localhost:5173` (or the port configured by Vit
 
 - `GET /oauth/authorize` - Initiate LinkedIn OAuth flow
 - `GET /oauth/callback` - Handle LinkedIn OAuth callback
-- `POST /oauth/token` - Exchange code for access token
+- `POST /oauth/token` - Exchange code for access token (PKCE flow)
 
 #### LinkedIn Operations
 
-The server exposes a single `/mcp` endpoint that supports the following operations:
+The server exposes a single `/mcp` endpoint that supports the following tool operations:
 
-- `getUserInfo` - Get user profile information
-- `createPost` - Create a text post
-- `createPostV2` - Create a post with newer API
-- `updatePost` - Update an existing post
-- `deletePost` - Delete a post
-- `initImageUpload` - Initialize image upload
-- `createImagePost` - Create a post with an image
-- `analyzeImageAndCreateContent` - Analyze image and generate content
+- `user-info` - Get user profile information (using OpenID Connect when available)
+- `create-post` - Create a text post using UGC Posts endpoint (up to 3,000 characters)
+- `init-image-upload` - Initialize image upload to LinkedIn
+- `create-image-post` - Create a post with an image using UGC Posts endpoint
+- `analyze-image-create-post` - Analyze image and generate content
+- `analyze-image-and-post` - Analyze image and directly post the generated content
 
-### Request & Response Format
+### API Integration Details
 
-All requests to `/mcp` follow this format:
+The application uses two main LinkedIn API endpoints for posting:
 
-```json
-{
-  "operation": "operationName",
-  "parameters": {
-    "param1": "value1",
-    "param2": "value2"
-  },
-  "sessionToken": "user_session_token"
-}
-```
+1. **UGC Posts Endpoint** (`/v2/ugcPosts`):
+   - Supports up to 3,000 characters
+   - Used for all post creation (text and image posts)
+   - Proper structure following LinkedIn API schema
 
-Responses follow this format:
-
-```json
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "Response content"
-    }
-  ],
-  "isError": false
-}
-```
+2. **User Info Endpoint**:
+   - Uses `/v2/userinfo` for OpenID Connect authentication
+   - Falls back to `/v2/me` for traditional OAuth
 
 ## 💻 Development
 
@@ -247,118 +245,68 @@ linkedin-mcp/
 ├── mcp-server/              # Backend server
 │   ├── src/
 │   │   ├── auth/            # Authentication logic
+│   │   │   ├── ClientsStore.ts  # OAuth client management
+│   │   │   ├── OAuthServerProvider.ts  # OAuth provider implementation
+│   │   │   ├── SessionsStore.ts  # Session management
+│   │   │   └── TokenStore.ts     # Token storage and validation
 │   │   ├── mcp/             # Core MCP functionality
 │   │   │   ├── Tools.ts     # LinkedIn API integration
-│   │   │   └── ...
-│   │   ├── index.ts         # Server entry point
-│   │   └── ...
-│   ├── package.json
-│   └── ...
-│
+│   │   │   └── TransportsStore.ts  # MCP transport management
+│   │   └── index.ts         # Server entry point
 ├── frontend-vite/           # Frontend application
-│   ├── src/
-│   │   ├── components/      # React components
-│   │   ├── pages/           # Application pages
-│   │   ├── App.tsx          # Main application
-│   │   └── ...
-│   ├── package.json
-│   └── ...
-│
-└── README.md
 ```
 
-### Adding New Features
+## 🔧 Recent Improvements
 
-1. For new LinkedIn API features:
-   - Add methods to `Tools.ts`
-   - Ensure proper error handling
-   - Update API documentation
+### LinkedIn API Integration
 
-2. For new frontend features:
-   - Create components in `frontend-vite/src/components`
-   - Update routes if adding new pages
-   - Connect to backend via appropriate API calls
+- **Modern Endpoints**: Switched to `/v2/ugcPosts` endpoint for post creation, supporting longer content (up to 3,000 characters)
+- **OpenID Connect**: Added support for OpenID Connect authentication for profile information
+- **Proper Error Handling**: Improved error diagnostics for LinkedIn API responses
+- **Character Limit Detection**: Automatic detection of content that exceeds legacy endpoints' limits
 
-## 🔍 Troubleshooting
+### Content Posting Capabilities
 
-### Common Issues and Resolutions
+- **One-Step Image Analysis & Posting**: Added the ability to analyze an image and post the generated content in one operation
+- **UGC Post Structure**: Properly structured posts following LinkedIn's schema requirements
+- **Proper Media Support**: Enhanced image post creation with the correct media attributes
 
-#### Authentication Challenges
+## 🚧 Troubleshooting
 
-- **Issue**: "LinkedIn session has expired"
-  - **Solution**: Sign out completely from the application, clear browser cookies, and perform a fresh login through the LinkedIn OAuth flow
-  - **Cause**: OAuth access tokens have a limited lifespan (typically 60 days) and require renewal
-  - **Prevention**: Implement proper token refresh mechanisms using the refresh token when available
+### Common Issues and Solutions
 
-- **Issue**: "Permission denied" or "Not authorized"
-  - **Solution**: 
-    1. Verify that your LinkedIn account has the necessary permissions
-    2. Check that your LinkedIn Developer application has requested all required scopes
-    3. Ensure the account using the application has proper access levels in LinkedIn
-  - **Cause**: Missing or insufficient LinkedIn API permissions or scope limitations
-  - **Technical Details**: LinkedIn's permissions are granular and must explicitly match the API endpoints you're accessing
+1. **Authentication Errors**:
+   - Ensure your LinkedIn app is properly configured
+   - Check that all required scopes are enabled
+   - Verify redirect URLs match exactly
 
-#### API Communication Errors
+2. **Posting Errors**:
+   - If receiving 500 errors, check post length (now handled automatically)
+   - Ensure your token includes the `w_member_social` scope
+   - Verify your app is approved for posting if required by LinkedIn
 
-- **Issue**: "LinkedIn API rate limit exceeded"
-  - **Solution**: 
-    1. Implement exponential backoff strategy for retries
-    2. Reduce frequency of API calls
-    3. Wait for the rate limit window to reset (typically 24 hours)
-  - **Cause**: LinkedIn enforces strict API rate limits (approximately 100 calls per day per user)
-  - **Best Practice**: Cache responses when possible to reduce API calls
+3. **Image Upload Issues**:
+   - Follow the two-step process: initialize upload, then create post
+   - Check that image format and size are supported by LinkedIn
+   - Ensure proper URN references in posts
 
-- **Issue**: "Cannot access one or more requested fields"
-  - **Solution**: 
-    1. Review your application's permission scopes in LinkedIn Developer Portal
-    2. Request minimum necessary permissions based on LinkedIn's documentation
-    3. Adjust field projections in API calls to match granted permissions
-  - **Cause**: Application's OAuth scope doesn't cover all requested data fields
-  - **Reference**: Consult LinkedIn's field projection documentation for specific endpoint requirements
+## ✅ Known Issues
 
-#### Media Upload Complications
-
-- **Issue**: "Invalid image data provided"
-  - **Solution**: 
-    1. Verify image format is supported (JPEG, PNG recommended)
-    2. Ensure image size is within LinkedIn limits (under 5MB)
-    3. Check that base64 encoding is properly formatted without data URI prefix
-  - **Cause**: Image data not properly formatted, corrupted, or exceeding size limits
-  - **Debugging**: Log image metadata (size, type) before attempting upload
-
-- **Issue**: "Error analyzing image with Gemini"
-  - **Solution**: 
-    1. Verify Gemini API key is valid and has proper permissions
-    2. Ensure image complies with Gemini's content policy
-    3. Try processing with a smaller or less complex image
-    4. Check network connectivity to Gemini API endpoints
-  - **Cause**: Issues with Gemini API authentication, rate limits, or image compatibility
-  - **Monitoring**: Implement proper error logging for AI processing attempts
-
-## ⚠️ Known Issues
-
-### Critical: LinkedIn API Publishing Limitations
-
-We are currently experiencing significant challenges with post publishing functionality due to recent LinkedIn API changes. LinkedIn has implemented several breaking changes to their publishing endpoints as part of their API version updates (most recently to version 202504).
-
-**Specific issues include:**
-
-- Post creation occasionally fails with error code 403 due to LinkedIn's stricter permission enforcement
-- Content distribution options have changed, requiring updates to our publishing pipeline
-- Media attachment process has been modified, breaking our existing image upload functionality
-- New rate limiting policies affecting bulk publishing operations
-
-**Current workarounds:**
-
-1. We've implemented temporary fallback to the legacy `/shares` endpoint where possible
-2. Added additional error handling for the new API response formats
-3. Developing an updated authorization flow to accommodate LinkedIn's new permission model
-
-**Status:** Our development team is actively working on a comprehensive update to align with LinkedIn's new API specifications. We expect to release a fix in the next update.
-
-For the latest status on this issue, please check our GitHub issues page or contact our support team directly.
+- LinkedIn API occasionally returns 500 errors for various reasons
+- Token expiration requires re-authentication
+- Content with special characters may require additional encoding
 
 ---
+
+## 📄 License
+
+MIT License
+
+## 🙏 Acknowledgements
+
+- LinkedIn API Documentation
+- Gemini AI for image analysis
+- Contributors to this project
 
 ## 📬 Contact & Support
 
@@ -369,7 +317,3 @@ If you encounter any issues or need assistance with implementation:
 - Contact the lead developer directly at harshpatel25800@gmail.com
 
 For enterprise support options or custom implementation assistance, please reach out via email with "Enterprise Support" in the subject line.
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details. 

@@ -1,3 +1,6 @@
+// Initialize Logger first to capture all logs
+import "./utils/Logger";
+
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -198,6 +201,62 @@ server.tool(
     }
 );
 
+// Register the new structured post creation tool
+server.tool(
+    "analyze-image-structured-post",
+    "Analyze an image and create a structured LinkedIn post based on user text using XML format",
+    {
+        imageBase64: z.string(),
+        userText: z.string(),
+        mimeType: z.string()
+    },
+    async ({ imageBase64, userText, mimeType }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.analyzeImageCreateStructuredPost({ imageBase64, userText, mimeType }, linkedinTokens);
+    }
+);
+
+// Register the new tool that analyzes image and posts with the image
+server.tool(
+    "analyze-image-structured-post-with-image",
+    "Analyze an image, create structured content based on user text, and post to LinkedIn with the image",
+    {
+        imageBase64: z.string(),
+        userText: z.string(),
+        mimeType: z.string()
+    },
+    async ({ imageBase64, userText, mimeType }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.analyzeImageStructuredPostWithImage({ imageBase64, userText, mimeType }, linkedinTokens);
+    }
+);
+
 // Register create-image-post tool
 server.tool(
     "create-image-post",
@@ -297,6 +356,34 @@ server.tool(
 
         // Create the post using UGC Posts endpoint
         return tools.createUgcPost({ content: cleanContent, visibility }, linkedinTokens);
+    }
+);
+
+// Register linkedin-post-with-multiple-images tool
+server.tool(
+    "linkedin-post-with-multiple-images",
+    "Create a LinkedIn post with multiple images (carousel post)",
+    {
+        imageBase64s: z.array(z.string()),
+        text: z.string(),
+        mimeType: z.string().optional()
+    },
+    async ({ imageBase64s, text, mimeType }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInPostWithMultipleImages({ imageBase64s, text, mimeType }, linkedinTokens);
     }
 );
 
@@ -433,4 +520,4 @@ app.post("/mcp", async (req, res) => {
 // Start server
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-}); 
+});

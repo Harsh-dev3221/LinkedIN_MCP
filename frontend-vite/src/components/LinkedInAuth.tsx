@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Button, Box, Typography, CircularProgress } from '@mui/material';
+import { Button, Box, Typography, CircularProgress, Card, CardContent } from '@mui/material';
 import { useLocation } from 'react-router-dom';
+import LinkedInIcon from '@mui/icons-material/LinkedIn';
 
 interface LinkedInAuthProps {
     onAuthSuccess: (token: string) => void;
@@ -37,7 +38,8 @@ const LinkedInAuth = ({ onAuthSuccess }: LinkedInAuthProps) => {
 
         // Create and redirect to authorization URL
         const clientId = import.meta.env.VITE_LINKEDIN_CLIENT_ID;
-        const redirectUri = encodeURIComponent(`${import.meta.env.VITE_MCP_SERVER_URL}/oauth/callback`);
+        // Use the frontend URL for the redirect
+        const redirectUri = encodeURIComponent(`${window.location.origin}/callback`);
 
         const authUrl = `${import.meta.env.VITE_MCP_SERVER_URL}/oauth/authorize?` +
             `client_id=${clientId}&` +
@@ -76,7 +78,7 @@ const LinkedInAuth = ({ onAuthSuccess }: LinkedInAuthProps) => {
                         },
                         body: JSON.stringify({
                             client_id: import.meta.env.VITE_LINKEDIN_CLIENT_ID,
-                            redirect_uri: `${import.meta.env.VITE_MCP_SERVER_URL}/oauth/callback`,
+                            redirect_uri: `${window.location.origin}/callback`,
                             code_verifier: codeVerifier,
                             code: code,
                             grant_type: 'authorization_code'
@@ -114,21 +116,47 @@ const LinkedInAuth = ({ onAuthSuccess }: LinkedInAuthProps) => {
 
     return (
         <Box textAlign="center" p={3}>
-            <Typography variant="h5" gutterBottom>
-                Connect with LinkedIn
-            </Typography>
-            <Typography variant="body1" paragraph>
-                Login with your LinkedIn account to create and share posts
-            </Typography>
-            <Button
-                variant="contained"
-                color="primary"
-                onClick={handleLogin}
-                disabled={isLoading}
-                startIcon={isLoading ? <CircularProgress size={24} color="inherit" /> : null}
+            <Card
+                sx={{
+                    maxWidth: 500,
+                    margin: '0 auto',
+                    borderRadius: 4,
+                    boxShadow: '0 10px 30px rgba(255, 138, 0, 0.15)',
+                    overflow: 'hidden',
+                    transition: 'transform 0.3s ease',
+                    '&:hover': {
+                        transform: 'translateY(-5px)',
+                    },
+                    background: 'rgba(255, 255, 255, 0.8)',
+                    backdropFilter: 'blur(8px)',
+                    border: '1px solid rgba(255, 255, 255, 0.5)',
+                }}
             >
-                {isLoading ? 'Connecting...' : 'Connect with LinkedIn'}
-            </Button>
+                <CardContent sx={{ p: 4 }}>
+                    <Typography variant="h5" gutterBottom>
+                        Connect with LinkedIn
+                    </Typography>
+                    <Typography variant="body1" paragraph sx={{ mb: 4 }}>
+                        Login with your LinkedIn account to create and share posts
+                    </Typography>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={handleLogin}
+                        disabled={isLoading}
+                        size="large"
+                        startIcon={isLoading ? <CircularProgress size={24} color="inherit" /> : <LinkedInIcon />}
+                        sx={{
+                            py: 1.5,
+                            px: 3,
+                            borderRadius: 3,
+                            fontSize: '1.1rem',
+                        }}
+                    >
+                        {isLoading ? 'Connecting...' : 'Connect with LinkedIn'}
+                    </Button>
+                </CardContent>
+            </Card>
         </Box>
     );
 };

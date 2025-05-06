@@ -1,157 +1,192 @@
-import { useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Container, Paper, Typography, Stepper, Step, StepLabel, Box, ThemeProvider, createTheme, CssBaseline } from '@mui/material';
-import axios from 'axios';
+import { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 
 import LinkedInAuth from './components/LinkedInAuth';
-import ImageUploader from './components/ImageUploader';
-import PostEditor from './components/PostEditor';
+import GradientBackground from './components/GradientBackground';
+import LandingPage from './components/LandingPage';
+import NewUnifiedPostCreator from './components/NewUnifiedPostCreator';
 
-// Create a theme
+// Create a theme with orange-yellow sunshine color palette
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#0077B5', // LinkedIn blue
+      main: '#ff8a00', // Orange
+      light: '#ffa33a',
+      dark: '#e67a00',
+      contrastText: '#fff',
     },
     secondary: {
-      main: '#00a0dc',
+      main: '#ffc000', // Yellow
+      light: '#ffcf33',
+      dark: '#e6ac00',
+      contrastText: '#000',
+    },
+    background: {
+      default: '#fcfcfc',
+      paper: 'rgba(255, 255, 255, 0.85)',
+    },
+    text: {
+      primary: '#333333',
+      secondary: '#666666',
+    },
+  },
+  typography: {
+    fontFamily: '"Inter", "Roboto", "Helvetica", "Arial", sans-serif',
+    h4: {
+      fontWeight: 700,
+      background: 'linear-gradient(90deg, #ff8a00, #ffc000)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+      textFillColor: 'transparent',
+    },
+    h5: {
+      fontWeight: 600,
+      color: '#ff8a00',
+    },
+    h1: {
+      fontWeight: 800,
+      fontSize: 'clamp(2.5rem, 5vw, 3.5rem)',
+      background: 'linear-gradient(90deg, #ff8a00, #ffc000)',
+      WebkitBackgroundClip: 'text',
+      WebkitTextFillColor: 'transparent',
+      backgroundClip: 'text',
+      textFillColor: 'transparent',
+    },
+    h2: {
+      fontWeight: 700,
+      fontSize: 'clamp(1.8rem, 3vw, 2.5rem)',
+      color: '#333',
+    },
+  },
+  shape: {
+    borderRadius: 12,
+  },
+  components: {
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+          border: '1px solid rgba(255, 255, 255, 0.3)',
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: {
+          textTransform: 'none',
+          fontWeight: 600,
+          padding: '10px 20px',
+          transition: 'all 0.3s ease',
+          boxShadow: '0 4px 12px rgba(255, 138, 0, 0.2)',
+          '&:hover': {
+            transform: 'translateY(-2px)',
+            boxShadow: '0 8px 16px rgba(255, 138, 0, 0.3)',
+          },
+        },
+        containedPrimary: {
+          background: 'linear-gradient(45deg, #ff8a00, #ffc000)',
+          '&:hover': {
+            background: 'linear-gradient(45deg, #ff9d2a, #ffd133)',
+          },
+        },
+      },
+    },
+    MuiStepper: {
+      styleOverrides: {
+        root: {
+          '& .MuiStepIcon-root.Mui-active': {
+            color: '#ff8a00',
+          },
+          '& .MuiStepIcon-root.Mui-completed': {
+            color: '#ffc000',
+          },
+        },
+      },
     },
   },
 });
 
-// Create MCP client for Gemini API communication
-const createMcpClient = (token: string) => {
-  return {
-    callTool: async (toolName: string, params: any) => {
-      const response = await axios.post(`${import.meta.env.VITE_MCP_SERVER_URL}/mcp`, {
-        type: "call-tool",
-        tool: toolName,
-        params
-      }, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (response.data.isError) {
-        throw new Error(response.data.content[0].text);
-      }
-
-      return response.data;
-    }
-  };
-};
-
-function App() {
-  const [activeStep, setActiveStep] = useState(0);
+// Main content component that has access to routing
+function AppContent() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  // State management
+  const [showLanding, setShowLanding] = useState(true);
   const [authToken, setAuthToken] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [generatedContent, setGeneratedContent] = useState('');
 
-  // Steps in the process
-  const steps = ['Connect LinkedIn', 'Upload Image', 'Edit & Publish'];
+  // Check if we're on the callback route
+  useEffect(() => {
+    // If we're on the callback route, we don't want to show the landing page
+    if (location.pathname === '/callback') {
+      setShowLanding(false);
+    }
+
+    // Check for existing auth token in localStorage
+    const savedToken = localStorage.getItem('linkedin_token');
+    if (savedToken) {
+      setAuthToken(savedToken);
+    }
+  }, [location]);
+
+  // Start the app flow
+  const handleGetStarted = () => {
+    setShowLanding(false);
+  };
 
   // Handle LinkedIn authentication
   const handleAuthSuccess = (token: string) => {
     setAuthToken(token);
-    setActiveStep(1);
+    // Save token to localStorage for later use
+    localStorage.setItem('linkedin_token', token);
+    navigate('/create');
   };
 
-  // Handle image analysis and content generation
-  const handleImageAnalyze = async (imageData: { base64: string, prompt: string, mimeType: string }) => {
-    if (!authToken) return;
-
-    setIsProcessing(true);
-    try {
-      const mcpClient = createMcpClient(authToken);
-
-      const result = await mcpClient.callTool('analyze-image-create-post', {
-        imageBase64: imageData.base64,
-        prompt: imageData.prompt,
-        mimeType: imageData.mimeType
-      });
-
-      setGeneratedContent(result.content[0].text);
-      setActiveStep(2);
-    } catch (error) {
-      console.error('Error analyzing image:', error);
-      alert('Error analyzing image: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Handle publish to LinkedIn
-  const handlePublish = async (content: string) => {
-    if (!authToken) return;
-
-    const mcpClient = createMcpClient(authToken);
-    await mcpClient.callTool('create-post', { content });
-  };
-
-  // Reset the flow
+  // Handle reset/logout
   const handleReset = () => {
-    setGeneratedContent('');
-    setActiveStep(1);
+    localStorage.removeItem('linkedin_token');
+    setAuthToken(null);
+    setShowLanding(true);
+    navigate('/');
   };
 
-  // Render the current step content
-  const renderStepContent = () => {
-    switch (activeStep) {
-      case 0:
-        return <LinkedInAuth onAuthSuccess={handleAuthSuccess} />;
-      case 1:
-        return <ImageUploader onImageAnalyze={handleImageAnalyze} isProcessing={isProcessing} />;
-      case 2:
-        return <PostEditor
-          generatedContent={generatedContent}
-          onPublish={handlePublish}
-          onReset={handleReset}
-        />;
-      default:
-        return <Navigate to="/" />;
+  // Render the app UI based on the current state
+  const renderAppUI = () => {
+    if (showLanding) {
+      return <LandingPage onGetStarted={handleGetStarted} />;
     }
+
+    if (!authToken) {
+      return <LinkedInAuth onAuthSuccess={handleAuthSuccess} />;
+    }
+
+    return <Navigate to="/create" />;
   };
 
   return (
+    <div className="app-container">
+      <GradientBackground />
+      <Routes>
+        <Route path="/" element={renderAppUI()} />
+        <Route path="/callback" element={<LinkedInAuth onAuthSuccess={handleAuthSuccess} />} />
+        <Route path="/create" element={<NewUnifiedPostCreator authToken={authToken || undefined} />} />
+      </Routes>
+    </div>
+  );
+}
+
+function App() {
+  return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Container maxWidth="md" sx={{ mt: 5, mb: 5 }}>
-        <Paper elevation={3} sx={{ p: 4 }}>
-          <Typography variant="h4" component="h1" align="center" gutterBottom>
-            LinkedIn Post Creator
-          </Typography>
-          <Typography variant="subtitle1" align="center" color="text.secondary" paragraph>
-            Create professional LinkedIn posts with Gemini AI image analysis
-          </Typography>
-
-          <Stepper activeStep={activeStep} sx={{ pt: 3, pb: 5 }}>
-            {steps.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
-
-          <Box sx={{ mt: 2 }}>
-            {renderStepContent()}
-          </Box>
-        </Paper>
-      </Container>
+      <Router>
+        <AppContent />
+      </Router>
     </ThemeProvider>
   );
 }
 
-const AppWrapper = () => {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/callback" element={<App />} />
-      </Routes>
-    </Router>
-  );
-};
-
-export default AppWrapper;
+export default App;
