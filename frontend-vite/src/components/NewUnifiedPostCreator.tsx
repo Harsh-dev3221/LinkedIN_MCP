@@ -11,18 +11,24 @@ import {
     IconButton,
     Alert,
     CircularProgress,
-    Card
+    Card,
+    CardContent,
+    Chip,
+    Stack
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import TokenIcon from '@mui/icons-material/Token';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import GradientBackground from './GradientBackground';
 import PostAI from './PostAI';
+import { useAuth } from '../contexts/AuthContext';
+import { TOKEN_COSTS } from '../lib/supabase';
 
 // Create MCP client for API communication
-const createMcpClient = (token: string) => {
+const createMcpClient = (token: string, onTokenExpired?: () => void) => {
     return {
         callTool: async (toolName: string, params: any) => {
             try {
@@ -34,7 +40,8 @@ const createMcpClient = (token: string) => {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    timeout: 30000 // 30 second timeout
                 });
 
                 if (response.data.isError) {
@@ -44,23 +51,34 @@ const createMcpClient = (token: string) => {
                 return response.data;
             } catch (error: any) {
                 console.error(`Error calling tool ${toolName}:`, error);
+
+                // Handle authentication errors
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    console.error('MCP token expired or invalid');
+                    if (onTokenExpired) {
+                        onTokenExpired();
+                    }
+                    throw new Error('LinkedIn connection expired. Please reconnect your LinkedIn account.');
+                }
+
                 // Check if it's an API error related to unknown tool
                 if (error.response?.data?.error?.includes('Unknown tool')) {
                     throw new Error(`API tool not available: ${toolName}. Please check if the backend supports this operation.`);
                 }
+
+                // Handle network errors
+                if (error.code === 'ECONNABORTED' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+                    throw new Error('Network error. Please check your connection and try again.');
+                }
+
                 throw error;
             }
         }
     };
 };
 
-interface NewUnifiedPostCreatorProps {
-    authToken?: string;
-}
-
-const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreatorProps) => {
-    // Use the prop token if provided, otherwise check localStorage
-    const authToken = propAuthToken || localStorage.getItem('linkedin_token') || '';
+const NewUnifiedPostCreator = () => {
+    const { user, session, tokenStatus, refreshTokenStatus, mcpToken, linkedinConnected, refreshMcpToken } = useAuth();
     const navigate = useNavigate();
 
     // UI State
@@ -84,26 +102,24 @@ const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreat
     // Steps in the process
     const steps = ['Create Content', 'Review & Publish'];
 
-    // Check if we have an auth token
+    // Check authentication and update character count
     useEffect(() => {
-        if (!authToken) {
-            // Redirect to home page if no token found
-            setErrorMessage('Please connect your LinkedIn account first');
-            // Give user time to read the error message before redirecting
-            const timer = setTimeout(() => navigate('/'), 3000);
+        if (!user || !session) {
+            setErrorMessage('Please sign in to continue');
+            const timer = setTimeout(() => navigate('/auth'), 3000);
             return () => clearTimeout(timer);
         }
 
         // Update character count when content changes
         setCharCount(generatedContent.length);
-    }, [authToken, navigate, generatedContent]);
+    }, [user, session, navigate, generatedContent]);
 
     // Return to the main app
     const handleBack = () => {
         if (activeStep > 0) {
             setActiveStep(activeStep - 1);
         } else {
-            navigate('/');
+            navigate('/dashboard');
         }
     };
 
@@ -155,17 +171,30 @@ const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreat
         setTimeout(() => setSuccessMessage(''), 5000);
     };
 
+    // Handle token expiration
+    const handleTokenExpired = () => {
+        setErrorMessage('LinkedIn connection expired. Please reconnect your LinkedIn account.');
+        // Optionally redirect to dashboard to reconnect
+        setTimeout(() => {
+            navigate('/dashboard');
+        }, 3000);
+    };
+
     // Handle content regeneration
     const handleRegenerateContent = async () => {
-        if (!authToken) return;
+        if (!mcpToken) {
+            setErrorMessage('LinkedIn connection required. Please connect your LinkedIn account.');
+            return;
+        }
 
         setIsRegenerating(true);
         try {
-            const mcpClient = createMcpClient(authToken);
+            const mcpClient = createMcpClient(mcpToken, handleTokenExpired);
 
             // Regenerate content based on the current content
-            const result = await mcpClient.callTool('analyze-image-and-post', {
-                userText: generatedContent
+            const result = await mcpClient.callTool('create-post', {
+                content: generatedContent,
+                userId: user?.id
             });
 
             setGeneratedContent(result.content[0].text);
@@ -180,11 +209,14 @@ const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreat
 
     // Handle publish to LinkedIn
     const handlePublish = async () => {
-        if (!authToken) return;
+        if (!mcpToken || !user) {
+            setErrorMessage('LinkedIn connection required. Please connect your LinkedIn account.');
+            return;
+        }
 
         setIsProcessing(true);
         try {
-            const mcpClient = createMcpClient(authToken);
+            const mcpClient = createMcpClient(mcpToken, handleTokenExpired);
 
             // Check if we have image data to publish
             if (imageData && imageMode) {
@@ -193,7 +225,8 @@ const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreat
                     const result = await mcpClient.callTool('analyze-image-structured-post-with-image', {
                         userText: generatedContent,
                         imageBase64: imageData.base64[0],
-                        mimeType: imageData.mimeType
+                        mimeType: imageData.mimeType,
+                        userId: user.id
                     });
                     setSuccessMessage('Successfully published to LinkedIn with image!');
                 }
@@ -202,7 +235,8 @@ const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreat
                     const result = await mcpClient.callTool('linkedin-post-with-multiple-images', {
                         text: generatedContent,
                         imageBase64s: imageData.base64,
-                        mimeType: imageData.mimeType
+                        mimeType: imageData.mimeType,
+                        userId: user.id
                     });
                     setSuccessMessage('Successfully published carousel to LinkedIn!');
                 }
@@ -210,10 +244,14 @@ const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreat
             // Text-only post
             else {
                 const result = await mcpClient.callTool('create-post', {
-                    content: generatedContent
+                    content: generatedContent,
+                    userId: user.id
                 });
                 setSuccessMessage('Successfully published to LinkedIn!');
             }
+
+            // Refresh token status after publishing
+            await refreshTokenStatus();
 
             // Reset content after successful publish
             setGeneratedContent('');
@@ -366,9 +404,52 @@ const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreat
         <Box sx={{ maxWidth: 800, mx: 'auto', p: { xs: 2, sm: 3 }, position: 'relative', zIndex: 10 }}>
             <GradientBackground />
 
-            <Typography variant="h4" sx={{ mb: 3, textAlign: 'center' }}>
-                LinkedIn Post Generator
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+                <Typography variant="h4" sx={{ textAlign: 'center', flex: 1 }}>
+                    LinkedIn Post Generator
+                </Typography>
+                <Button
+                    variant="outlined"
+                    onClick={() => navigate('/dashboard')}
+                    startIcon={<ArrowBackIcon />}
+                    size="small"
+                >
+                    Dashboard
+                </Button>
+            </Box>
+
+            {/* Token Status Display */}
+            {tokenStatus && (
+                <Card sx={{ mb: 3, background: 'rgba(255, 255, 255, 0.9)' }}>
+                    <CardContent sx={{ py: 2 }}>
+                        <Stack direction="row" spacing={2} alignItems="center" justifyContent="space-between">
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <TokenIcon color="primary" />
+                                <Typography variant="body2" fontWeight={600}>
+                                    Daily Tokens: {tokenStatus.tokens_remaining} / {tokenStatus.daily_tokens}
+                                </Typography>
+                            </Box>
+                            <Stack direction="row" spacing={1}>
+                                <Chip
+                                    label={`Basic: ${TOKEN_COSTS.BASIC_POST} tokens`}
+                                    color="success"
+                                    size="small"
+                                />
+                                <Chip
+                                    label={`Enhanced: ${TOKEN_COSTS.SINGLE_POST} tokens`}
+                                    color="primary"
+                                    size="small"
+                                />
+                                <Chip
+                                    label={`Multi: ${TOKEN_COSTS.MULTIPLE_POST} tokens`}
+                                    color="warning"
+                                    size="small"
+                                />
+                            </Stack>
+                        </Stack>
+                    </CardContent>
+                </Card>
+            )}
 
             <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
                 {steps.map((label) => (
@@ -391,12 +472,34 @@ const NewUnifiedPostCreator = ({ authToken: propAuthToken }: NewUnifiedPostCreat
             )}
 
             {activeStep === 0 ? (
-                <PostAI
-                    authToken={authToken}
-                    onGeneratedContent={handleGeneratedContent}
-                    onError={handleError}
-                    onSuccess={handleSuccess}
-                />
+                linkedinConnected && mcpToken ? (
+                    <PostAI
+                        authToken={mcpToken}
+                        userId={user?.id || ''}
+                        onGeneratedContent={handleGeneratedContent}
+                        onError={handleError}
+                        onSuccess={handleSuccess}
+                        onTokenExpired={handleTokenExpired}
+                    />
+                ) : (
+                    <Card sx={{ p: 3, borderRadius: 4, background: 'rgba(255, 255, 255, 0.7)', backdropFilter: 'blur(10px)' }}>
+                        <Typography variant="h6" gutterBottom sx={{ textAlign: 'center', color: 'warning.main' }}>
+                            LinkedIn Connection Required
+                        </Typography>
+                        <Typography variant="body1" sx={{ textAlign: 'center', mb: 2 }}>
+                            Please connect your LinkedIn account to create and publish posts.
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                            <Button
+                                variant="contained"
+                                color="primary"
+                                onClick={() => navigate('/dashboard')}
+                            >
+                                Go to Dashboard to Connect LinkedIn
+                            </Button>
+                        </Box>
+                    </Card>
+                )
             ) : (
                 renderContentPreview()
             )}

@@ -22,7 +22,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import axios from 'axios';
 
 // Create MCP client for API communication
-const createMcpClient = (token: string) => {
+const createMcpClient = (token: string, onTokenExpired?: () => void) => {
     return {
         callTool: async (toolName: string, params: any) => {
             try {
@@ -34,7 +34,8 @@ const createMcpClient = (token: string) => {
                     headers: {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    timeout: 30000 // 30 second timeout
                 });
 
                 if (response.data.isError) {
@@ -44,10 +45,26 @@ const createMcpClient = (token: string) => {
                 return response.data;
             } catch (error: any) {
                 console.error(`Error calling tool ${toolName}:`, error);
+
+                // Handle authentication errors
+                if (error.response?.status === 401 || error.response?.status === 403) {
+                    console.error('MCP token expired or invalid');
+                    if (onTokenExpired) {
+                        onTokenExpired();
+                    }
+                    throw new Error('LinkedIn connection expired. Please reconnect your LinkedIn account.');
+                }
+
                 // Check if it's an API error related to unknown tool
                 if (error.response?.data?.error?.includes('Unknown tool')) {
                     throw new Error(`API tool not available: ${toolName}. Please check if the backend supports this operation.`);
                 }
+
+                // Handle network errors
+                if (error.code === 'ECONNABORTED' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+                    throw new Error('Network error. Please check your connection and try again.');
+                }
+
                 throw error;
             }
         }
@@ -56,6 +73,7 @@ const createMcpClient = (token: string) => {
 
 interface PostAIProps {
     authToken: string;
+    userId: string;
     onGeneratedContent: (data: {
         content: string,
         imageData?: { base64: string[], mimeType: string },
@@ -63,9 +81,10 @@ interface PostAIProps {
     }) => void;
     onError: (message: string) => void;
     onSuccess: (message: string) => void;
+    onTokenExpired?: () => void;
 }
 
-const PostAI = ({ authToken, onGeneratedContent, onError, onSuccess }: PostAIProps) => {
+const PostAI = ({ authToken, userId, onGeneratedContent, onError, onSuccess, onTokenExpired }: PostAIProps) => {
     // State management
     const [postText, setPostText] = useState('');
     const [isImageEnabled, setIsImageEnabled] = useState(false);
@@ -142,12 +161,13 @@ const PostAI = ({ authToken, onGeneratedContent, onError, onSuccess }: PostAIPro
 
         setIsProcessing(true);
         try {
-            const mcpClient = createMcpClient(authToken);
+            const mcpClient = createMcpClient(authToken, onTokenExpired);
 
             // Text-only post
             if (!isImageEnabled || selectedImages.length === 0) {
                 const result = await mcpClient.callTool('create-post', {
-                    userText: postText
+                    content: postText,
+                    userId: userId
                 });
                 onGeneratedContent({ content: result.content[0].text });
                 onSuccess('Content generated successfully!');
@@ -157,10 +177,11 @@ const PostAI = ({ authToken, onGeneratedContent, onError, onSuccess }: PostAIPro
                 const imageData = selectedImages[0];
                 const base64Data = imageData.base64.split(',')[1] || imageData.base64;
 
-                const result = await mcpClient.callTool('analyze-image-structured-post', {
+                const result = await mcpClient.callTool('analyze-image-create-post', {
                     imageBase64: base64Data,
-                    userText: postText,
-                    mimeType: imageData.mimeType
+                    prompt: postText,
+                    mimeType: imageData.mimeType,
+                    userId: userId
                 });
 
                 // Provide both the content and image data to the parent
@@ -184,9 +205,9 @@ const PostAI = ({ authToken, onGeneratedContent, onError, onSuccess }: PostAIPro
 
                 // Use the first image for analysis to generate optimized carousel post
                 const firstImageData = imageBase64s[0];
-                const result = await mcpClient.callTool('analyze-image-structured-post', {
+                const result = await mcpClient.callTool('analyze-image-create-post', {
                     imageBase64: firstImageData,
-                    userText: `Create an engaging, professional LinkedIn carousel post that will accompany ${selectedImages.length} images.
+                    prompt: `Create an engaging, professional LinkedIn carousel post that will accompany ${selectedImages.length} images.
 
 IMPORTANT FORMATTING GUIDELINES:
 1. Use LinkedIn's supported formatting:
@@ -205,7 +226,8 @@ IMPORTANT FORMATTING GUIDELINES:
 3. Content length: 800-1200 characters for optimal engagement
 
 My draft text to enhance: "${postText}"`,
-                    mimeType: selectedImages[0].mimeType
+                    mimeType: selectedImages[0].mimeType,
+                    userId: userId
                 });
 
                 // Provide both the content and all image data to the parent

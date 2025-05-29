@@ -5,11 +5,17 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import { z } from "zod";
+import rateLimit from "express-rate-limit";
 
 import { OAuthServerProvider } from "./auth/OAuthServerProvider.js";
 import { Tools } from "./mcp/Tools.js";
 import { TransportsStore, AuthInfo } from "./mcp/TransportsStore.js";
 import { OAuthTokens } from "./auth/TokenStore.js";
+import { authMiddleware } from "./middleware/auth.js";
+import { UserService } from "./services/UserService.js";
+import { tokenScheduler } from "./services/TokenScheduler.js";
+import { TOKEN_COSTS } from "./database/supabase.js";
+import userRoutes from "./routes/users.js";
 
 // Simple MCP Server implementation
 class MCPServer {
@@ -86,6 +92,17 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Rate limiting
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // limit each IP to 100 requests per windowMs
+    message: 'Too many requests from this IP, please try again later.',
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+app.use(limiter);
+
 // Initialize CORS with allowed origins
 app.use(
     cors({
@@ -96,6 +113,9 @@ app.use(
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
+
+// Initialize services
+const userService = new UserService();
 
 // Initialize OAuth provider
 const oauthProvider = new OAuthServerProvider({
@@ -123,6 +143,40 @@ const server = new MCPServer(oauthProvider);
 // Initialize tools
 const tools = new Tools();
 
+// API Routes
+app.use('/api/users', userRoutes);
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        scheduler: tokenScheduler.getStatus()
+    });
+});
+
+// Register ping tool for token validation
+server.tool(
+    "ping",
+    "Ping the server to validate authentication",
+    {},
+    async (_params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return {
+            content: [{ type: "text", text: "pong" }],
+            isError: false
+        };
+    }
+);
+
 // Register user-info tool
 server.tool(
     "user-info",
@@ -147,14 +201,15 @@ server.tool(
     }
 );
 
-// Register create-post tool
+// Register create-post tool (Basic post - Free)
 server.tool(
     "create-post",
-    "Create a post on LinkedIn",
+    "Create a basic post on LinkedIn (Free - 0 tokens)",
     {
         content: z.string(),
+        userId: z.string().optional(),
     },
-    async ({ content }, { sessionId }) => {
+    async ({ content, userId }, { sessionId }) => {
         if (!sessionId) {
             throw new Error("No sessionId found");
         }
@@ -168,21 +223,35 @@ server.tool(
             throw new Error("LinkedIn tokens not found in session");
         }
 
+        // For basic posts, no token consumption required
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.createUgcPost({ content }, linkedinTokens);
+        const result = await tools.createUgcPost({ content }, linkedinTokens);
+
+        // Record the post if userId is provided
+        if (userId) {
+            try {
+                await userService.recordPost(userId, content, TOKEN_COSTS.BASIC_POST, 'basic');
+            } catch (error) {
+                console.error('Error recording basic post:', error);
+                // Don't fail the request if recording fails
+            }
+        }
+
+        return result;
     }
 );
 
-// Register analyze-image-create-post tool
+// Register analyze-image-create-post tool (Single post - 5 tokens)
 server.tool(
     "analyze-image-create-post",
-    "Analyze an image and create LinkedIn post content",
+    "Analyze an image and create LinkedIn post content (5 tokens)",
     {
         imageBase64: z.string(),
         prompt: z.string(),
-        mimeType: z.string()
+        mimeType: z.string(),
+        userId: z.string()
     },
-    async ({ imageBase64, prompt, mimeType }, { sessionId }) => {
+    async ({ imageBase64, prompt, mimeType, userId }, { sessionId }) => {
         if (!sessionId) {
             throw new Error("No sessionId found");
         }
@@ -196,8 +265,28 @@ server.tool(
             throw new Error("LinkedIn tokens not found in session");
         }
 
+        // Check and consume tokens
+        const canConsume = await userService.canConsumeTokens(userId, 'SINGLE_POST');
+        if (!canConsume) {
+            throw new Error("Insufficient tokens for single post generation");
+        }
+
+        const consumed = await userService.consumeTokens(userId, 'SINGLE_POST', prompt);
+        if (!consumed) {
+            throw new Error("Failed to consume tokens");
+        }
+
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.analyzeImageAndCreateContent({ imageBase64, prompt, mimeType }, linkedinTokens);
+        const result = await tools.analyzeImageAndCreateContent({ imageBase64, prompt, mimeType }, linkedinTokens);
+
+        // Record the post
+        try {
+            await userService.recordPost(userId, result.content[0].text, TOKEN_COSTS.SINGLE_POST, 'single');
+        } catch (error) {
+            console.error('Error recording single post:', error);
+        }
+
+        return result;
     }
 );
 
@@ -520,4 +609,14 @@ app.post("/mcp", async (req, res) => {
 // Start server
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+
+    // Start the token scheduler
+    tokenScheduler.start();
+
+    console.log('LinkedIn Post Creator MCP Server initialized successfully');
+    console.log('Features enabled:');
+    console.log('- User authentication and management');
+    console.log('- Token-based usage tracking');
+    console.log('- Daily token refresh (50 tokens/day)');
+    console.log('- Rate limiting and security');
 });

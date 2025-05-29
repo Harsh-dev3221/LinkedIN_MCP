@@ -196,7 +196,7 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
                 // IMPORTANT FIX: Use the frontend URL as the redirect target, not the server's callback URL
                 // The redirectUri from session should be the frontend application, not the server callback
                 let frontendRedirectUrl = process.env.CORS_ALLOWED_ORIGIN || 'http://localhost:5173';
-                frontendRedirectUrl = `${frontendRedirectUrl}/callback`;
+                frontendRedirectUrl = `${frontendRedirectUrl}/auth/callback`;
 
                 const redirectUrl = new URL(frontendRedirectUrl);
                 redirectUrl.searchParams.set("code", code);
@@ -356,4 +356,4 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
 
         return tokens.mcpServerToken;
     };
-} 
+}

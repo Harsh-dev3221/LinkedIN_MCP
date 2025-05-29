@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 
-import LinkedInAuth from './components/LinkedInAuth';
+import { AuthProvider } from './contexts/AuthContext';
 import GradientBackground from './components/GradientBackground';
 import LandingPage from './components/LandingPage';
+import AuthPage from './components/AuthPage';
+import AuthCallback from './components/AuthCallback';
+import UserDashboard from './components/UserDashboard';
 import NewUnifiedPostCreator from './components/NewUnifiedPostCreator';
+import ProtectedRoute from './components/ProtectedRoute';
 
 // Create a theme with orange-yellow sunshine color palette
 const theme = createTheme({
@@ -112,67 +116,49 @@ const theme = createTheme({
 
 // Main content component that has access to routing
 function AppContent() {
-  const location = useLocation();
-  const navigate = useNavigate();
-  // State management
   const [showLanding, setShowLanding] = useState(true);
-  const [authToken, setAuthToken] = useState<string | null>(null);
-
-  // Check if we're on the callback route
-  useEffect(() => {
-    // If we're on the callback route, we don't want to show the landing page
-    if (location.pathname === '/callback') {
-      setShowLanding(false);
-    }
-
-    // Check for existing auth token in localStorage
-    const savedToken = localStorage.getItem('linkedin_token');
-    if (savedToken) {
-      setAuthToken(savedToken);
-    }
-  }, [location]);
+  const navigate = useNavigate();
 
   // Start the app flow
   const handleGetStarted = () => {
     setShowLanding(false);
   };
 
-  // Handle LinkedIn authentication
-  const handleAuthSuccess = (token: string) => {
-    setAuthToken(token);
-    // Save token to localStorage for later use
-    localStorage.setItem('linkedin_token', token);
+  const handleCreatePost = () => {
     navigate('/create');
-  };
-
-  // Handle reset/logout
-  const handleReset = () => {
-    localStorage.removeItem('linkedin_token');
-    setAuthToken(null);
-    setShowLanding(true);
-    navigate('/');
-  };
-
-  // Render the app UI based on the current state
-  const renderAppUI = () => {
-    if (showLanding) {
-      return <LandingPage onGetStarted={handleGetStarted} />;
-    }
-
-    if (!authToken) {
-      return <LinkedInAuth onAuthSuccess={handleAuthSuccess} />;
-    }
-
-    return <Navigate to="/create" />;
   };
 
   return (
     <div className="app-container">
       <GradientBackground />
       <Routes>
-        <Route path="/" element={renderAppUI()} />
-        <Route path="/callback" element={<LinkedInAuth onAuthSuccess={handleAuthSuccess} />} />
-        <Route path="/create" element={<NewUnifiedPostCreator authToken={authToken || undefined} />} />
+        <Route
+          path="/"
+          element={
+            showLanding ?
+              <LandingPage onGetStarted={handleGetStarted} /> :
+              <Navigate to="/auth" replace />
+          }
+        />
+        <Route path="/auth" element={<AuthPage />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <UserDashboard onCreatePost={handleCreatePost} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/create"
+          element={
+            <ProtectedRoute>
+              <NewUnifiedPostCreator />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
   );
@@ -183,7 +169,9 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <Router>
-        <AppContent />
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </Router>
     </ThemeProvider>
   );

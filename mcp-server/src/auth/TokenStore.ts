@@ -36,7 +36,7 @@ export class TokensStore {
         }
     > = {};
 
-    private _TOKEN_DURATION_MINUTES = 60;
+    private _TOKEN_DURATION_MINUTES = 24 * 60; // 24 hours
     private _jwtSecret: string;
 
     constructor() {
@@ -77,4 +77,4 @@ export class TokensStore {
 
     public parseAccessToken = (accessToken: string) =>
         jwt.verify(accessToken, this._jwtSecret) as AccessTokenPayload;
-} 
+}
