@@ -78,7 +78,7 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
 };
 
 const NewUnifiedPostCreator = () => {
-    const { user, session, tokenStatus, refreshTokenStatus, mcpToken, linkedinConnected, refreshMcpToken } = useAuth();
+    const { user, session, tokenStatus, refreshTokenStatus, mcpToken, linkedinConnected, refreshMcpToken, refreshLinkedInStatus } = useAuth();
     const navigate = useNavigate();
 
     // UI State
@@ -113,6 +113,12 @@ const NewUnifiedPostCreator = () => {
         // Update character count when content changes
         setCharCount(generatedContent.length);
     }, [user, session, navigate, generatedContent]);
+
+    // Force refresh LinkedIn status when component mounts to ensure accurate state
+    useEffect(() => {
+        console.log('🔄 NewUnifiedPostCreator mounted, refreshing LinkedIn status...');
+        refreshLinkedInStatus();
+    }, [refreshLinkedInStatus]);
 
     // Return to the main app
     const handleBack = () => {

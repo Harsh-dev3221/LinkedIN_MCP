@@ -67,6 +67,22 @@ CREATE TABLE posts (
     CHECK (tokens_used >= 0)
 );
 
+-- LinkedIn connections table - stores OAuth tokens for LinkedIn integration
+CREATE TABLE linkedin_connections (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    mcp_token_id TEXT NOT NULL,
+    linkedin_access_token TEXT NOT NULL,
+    linkedin_refresh_token TEXT,
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),
+    linkedin_user_id TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+    -- Ensure unique token per user
+    UNIQUE(user_id, mcp_token_id)
+);
+
 -- Indexes for better performance
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_provider ON users(provider, provider_id);
@@ -76,6 +92,9 @@ CREATE INDEX idx_token_usage_user_id ON token_usage_history(user_id);
 CREATE INDEX idx_token_usage_timestamp ON token_usage_history(timestamp);
 CREATE INDEX idx_posts_user_id ON posts(user_id);
 CREATE INDEX idx_posts_created_at ON posts(created_at);
+CREATE INDEX idx_linkedin_connections_user_id ON linkedin_connections(user_id);
+CREATE INDEX idx_linkedin_connections_mcp_token ON linkedin_connections(mcp_token_id);
+CREATE INDEX idx_linkedin_connections_expires_at ON linkedin_connections(expires_at);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -162,6 +181,7 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE token_usage_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE linkedin_connections ENABLE ROW LEVEL SECURITY;
 
 -- Users can only see their own data
 CREATE POLICY "Users can view own profile" ON users
@@ -180,6 +200,9 @@ CREATE POLICY "Users can view own usage history" ON token_usage_history
 CREATE POLICY "Users can view own posts" ON posts
     FOR SELECT USING (auth.uid() = user_id::text);
 
+CREATE POLICY "Users can view own linkedin connections" ON linkedin_connections
+    FOR SELECT USING (auth.uid() = user_id::text);
+
 -- Service role can do everything (for backend operations)
 -- Note: Service role bypasses RLS by default in Supabase, but we add these for clarity
 
@@ -193,4 +216,7 @@ CREATE POLICY "Service role full access history" ON token_usage_history
     FOR ALL USING (auth.role() = 'service_role');
 
 CREATE POLICY "Service role full access posts" ON posts
+    FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role full access linkedin connections" ON linkedin_connections
     FOR ALL USING (auth.role() = 'service_role');

@@ -11,6 +11,7 @@ const AuthCallback: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string>('Processing authentication...');
     const [authProcessed, setAuthProcessed] = useState(false);
+    const [isLinkedInCallback, setIsLinkedInCallback] = useState(false);
 
     useEffect(() => {
         const handleAuthCallback = async () => {
@@ -20,16 +21,26 @@ const AuthCallback: React.FC = () => {
                 const linkedinState = searchParams.get('state');
 
                 if (linkedinCode && linkedinState) {
-                    console.log('LinkedIn OAuth callback detected');
+                    console.log('🔗 LinkedIn OAuth callback detected');
                     setStatus('Processing LinkedIn connection...');
+                    setIsLinkedInCallback(true);
 
                     try {
-                        await handleLinkedInCallback(linkedinCode, linkedinState);
-                        setStatus('LinkedIn connection successful! Redirecting to post creator...');
+                        // handleLinkedInCallback now returns boolean indicating success
+                        const connectionSuccess = await handleLinkedInCallback(linkedinCode, linkedinState);
+
+                        if (connectionSuccess) {
+                            setStatus('✅ LinkedIn connection successful!');
+                            console.log('🎉 LinkedIn connection completed successfully');
+                        } else {
+                            setStatus('⚠️ LinkedIn connection validation failed');
+                            console.warn('LinkedIn connection was established but validation failed');
+                        }
+
                         setAuthProcessed(true);
                         return;
                     } catch (error: any) {
-                        console.error('LinkedIn OAuth error:', error);
+                        console.error('❌ LinkedIn OAuth error:', error);
                         setError(error.message || 'LinkedIn connection failed');
                         return;
                     }
@@ -91,22 +102,20 @@ const AuthCallback: React.FC = () => {
     useEffect(() => {
         if (authProcessed && !loading) {
             if (user) {
-                // Check if this was a LinkedIn OAuth callback
-                const linkedinCode = searchParams.get('code');
-
-                if (linkedinCode) {
-                    console.log('LinkedIn connection successful, navigating to post creator');
+                if (isLinkedInCallback) {
+                    // For LinkedIn callbacks, navigate immediately since connection status is already set
+                    console.log('🚀 LinkedIn callback processed, navigating to post creator');
                     navigate('/create');
                 } else {
-                    console.log('User is ready, navigating to dashboard');
+                    console.log('🚀 User is ready, navigating to dashboard');
                     navigate('/dashboard');
                 }
             } else {
                 // Give a bit more time for the auth context to update
-                console.log('Auth processed but no user yet, waiting a bit more...');
+                console.log('⏳ Auth processed but no user yet, waiting a bit more...');
                 const timer = setTimeout(() => {
                     if (!user) {
-                        console.log('Still no user after waiting, redirecting to auth');
+                        console.log('❌ Still no user after waiting, redirecting to auth');
                         navigate('/auth');
                     }
                 }, 2000);
@@ -114,7 +123,7 @@ const AuthCallback: React.FC = () => {
                 return () => clearTimeout(timer);
             }
         }
-    }, [authProcessed, loading, user, navigate, searchParams]);
+    }, [authProcessed, loading, user, navigate, isLinkedInCallback]);
 
     // If user is already authenticated when component loads, redirect immediately
     useEffect(() => {

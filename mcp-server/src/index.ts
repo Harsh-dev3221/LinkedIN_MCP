@@ -318,16 +318,17 @@ server.tool(
     }
 );
 
-// Register the new tool that analyzes image and posts with the image
+// Register the new tool that analyzes image and posts with the image (Single image post - 5 tokens)
 server.tool(
     "analyze-image-structured-post-with-image",
-    "Analyze an image, create structured content based on user text, and post to LinkedIn with the image",
+    "Analyze an image, create structured content based on user text, and post to LinkedIn with the image - 5 tokens",
     {
         imageBase64: z.string(),
         userText: z.string(),
-        mimeType: z.string()
+        mimeType: z.string(),
+        userId: z.string()
     },
-    async ({ imageBase64, userText, mimeType }, { sessionId }) => {
+    async ({ imageBase64, userText, mimeType, userId }, { sessionId }) => {
         if (!sessionId) {
             throw new Error("No sessionId found");
         }
@@ -341,8 +342,28 @@ server.tool(
             throw new Error("LinkedIn tokens not found in session");
         }
 
+        // Check and consume tokens for single image post
+        const canConsume = await userService.canConsumeTokens(userId, 'SINGLE_POST');
+        if (!canConsume) {
+            throw new Error("Insufficient tokens for single image post creation");
+        }
+
+        const consumed = await userService.consumeTokens(userId, 'SINGLE_POST', userText);
+        if (!consumed) {
+            throw new Error("Failed to consume tokens");
+        }
+
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.analyzeImageStructuredPostWithImage({ imageBase64, userText, mimeType }, linkedinTokens);
+        const result = await tools.analyzeImageStructuredPostWithImage({ imageBase64, userText, mimeType }, linkedinTokens);
+
+        // Record the post
+        try {
+            await userService.recordPost(userId, userText, TOKEN_COSTS.SINGLE_POST, 'single');
+        } catch (error) {
+            console.error('Error recording single image post:', error);
+        }
+
+        return result;
     }
 );
 
@@ -448,16 +469,17 @@ server.tool(
     }
 );
 
-// Register linkedin-post-with-multiple-images tool
+// Register linkedin-post-with-multiple-images tool (Multi-image post - 10 tokens)
 server.tool(
     "linkedin-post-with-multiple-images",
-    "Create a LinkedIn post with multiple images (carousel post)",
+    "Create a LinkedIn post with multiple images (carousel post) - 10 tokens",
     {
         imageBase64s: z.array(z.string()),
         text: z.string(),
-        mimeType: z.string().optional()
+        mimeType: z.string().optional(),
+        userId: z.string()
     },
-    async ({ imageBase64s, text, mimeType }, { sessionId }) => {
+    async ({ imageBase64s, text, mimeType, userId }, { sessionId }) => {
         if (!sessionId) {
             throw new Error("No sessionId found");
         }
@@ -471,8 +493,28 @@ server.tool(
             throw new Error("LinkedIn tokens not found in session");
         }
 
+        // Check and consume tokens for multi-image post
+        const canConsume = await userService.canConsumeTokens(userId, 'MULTIPLE_POST');
+        if (!canConsume) {
+            throw new Error("Insufficient tokens for multi-image post creation");
+        }
+
+        const consumed = await userService.consumeTokens(userId, 'MULTIPLE_POST', text);
+        if (!consumed) {
+            throw new Error("Failed to consume tokens");
+        }
+
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.linkedInPostWithMultipleImages({ imageBase64s, text, mimeType }, linkedinTokens);
+        const result = await tools.linkedInPostWithMultipleImages({ imageBase64s, text, mimeType }, linkedinTokens);
+
+        // Record the post
+        try {
+            await userService.recordPost(userId, text, TOKEN_COSTS.MULTIPLE_POST, 'multiple');
+        } catch (error) {
+            console.error('Error recording multi-image post:', error);
+        }
+
+        return result;
     }
 );
 
@@ -562,7 +604,7 @@ app.post("/oauth/token", async (req, res) => {
     }
 });
 
-// Setup MCP endpoint
+// Setup MCP endpoint with enhanced security
 app.post("/mcp", async (req, res) => {
     try {
         const auth = req.headers.authorization;
@@ -575,20 +617,59 @@ app.post("/mcp", async (req, res) => {
 
         const token = auth.replace('Bearer ', '');
 
+        // SECURITY: Get user ID from request headers for ownership verification
+        const requestUserId = req.headers['x-user-id'] as string;
+        const mcpRequest = req.body;
+
         try {
             // Verify the token and get user info
             const authInfo = await oauthProvider.verifyAccessToken(token);
-            console.log("Auth info for MCP call:", {
+            console.log("🔒 SECURITY: Auth info for MCP call:", {
                 clientId: authInfo.clientId,
                 scopes: authInfo.scopes,
-                expiresAt: new Date(authInfo.expiresAt * 1000).toISOString()
+                expiresAt: new Date(authInfo.expiresAt * 1000).toISOString(),
+                requestUserId: requestUserId,
+                tool: mcpRequest.tool,
+                jti: authInfo.jti
             });
+
+            // SECURITY: Verify token ownership if user ID is provided
+            if (requestUserId && authInfo.jti) {
+                try {
+                    // Get user ID from LinkedIn connection
+                    const { data: connection } = await supabase
+                        .from('linkedin_connections')
+                        .select('user_id')
+                        .eq('mcp_token_id', authInfo.jti)
+                        .single();
+
+                    if (connection && connection.user_id !== requestUserId) {
+                        console.error('🚨 SECURITY VIOLATION: Token ownership mismatch!');
+                        console.error(`Token belongs to: ${connection.user_id}, Request from: ${requestUserId}`);
+                        return res.status(403).json({
+                            isError: true,
+                            content: [{ type: "text", text: "Token ownership violation: This token does not belong to the requesting user" }]
+                        });
+                    }
+
+                    console.log('✅ SECURITY: Token ownership verified for user:', requestUserId);
+                } catch (dbError) {
+                    console.warn('⚠️ SECURITY: Could not verify token ownership:', dbError);
+                    // Continue without blocking - this is for additional security, not core functionality
+                }
+            }
 
             // Create a transport with the verified auth info
             const transport = transportsStore.createTransport("/mcp", authInfo, res);
 
             // Handle the request
             const result = await server.handle(req.body, { transport });
+
+            // SECURITY: Include user verification in response for frontend validation
+            if (requestUserId && mcpRequest.tool === 'ping') {
+                result.userId = requestUserId;
+            }
+
             return res.json(result);
         } catch (error) {
             console.error("Token verification error:", error);

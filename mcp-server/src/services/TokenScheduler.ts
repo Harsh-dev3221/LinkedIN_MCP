@@ -11,7 +11,8 @@ export class TokenScheduler {
 
     /**
      * Start the token refresh scheduler
-     * Runs every day at midnight UTC
+     * Runs every day at midnight IST (Indian Standard Time) for Indian users
+     * Also runs at midnight UTC for global coverage
      */
     start(): void {
         if (this.isRunning) {
@@ -19,29 +20,43 @@ export class TokenScheduler {
             return;
         }
 
-        // Schedule daily token refresh at midnight UTC
+        // 🇮🇳 Schedule daily token refresh at midnight IST (Indian Standard Time)
         cron.schedule('0 0 * * *', async () => {
-            console.log('Running scheduled daily token refresh...');
+            console.log('🇮🇳 Running scheduled daily token refresh (IST - Indian Standard Time)...');
             try {
                 const updatedCount = await this.userService.refreshDailyTokensIfNeeded();
-                console.log(`Daily token refresh completed. Updated ${updatedCount} users.`);
+                console.log(`🇮🇳 IST Daily token refresh completed. Updated ${updatedCount} users.`);
             } catch (error) {
-                console.error('Error during scheduled token refresh:', error);
+                console.error('🇮🇳 Error during IST scheduled token refresh:', error);
             }
         }, {
             scheduled: true,
-            timezone: 'UTC'
+            timezone: 'Asia/Kolkata' // 🇮🇳 Indian Standard Time
         });
 
-        // Also run a check every hour to catch any missed refreshes
-        cron.schedule('0 * * * *', async () => {
+        // 🌍 Schedule daily token refresh at midnight UTC for global coverage
+        cron.schedule('0 0 * * *', async () => {
+            console.log('🌍 Running scheduled daily token refresh (UTC - Global)...');
+            try {
+                const updatedCount = await this.userService.refreshDailyTokensIfNeeded();
+                console.log(`🌍 UTC Daily token refresh completed. Updated ${updatedCount} users.`);
+            } catch (error) {
+                console.error('🌍 Error during UTC scheduled token refresh:', error);
+            }
+        }, {
+            scheduled: true,
+            timezone: 'UTC' // 🌍 Global UTC time
+        });
+
+        // Also run a check every 4 hours to catch any missed refreshes
+        cron.schedule('0 */4 * * *', async () => {
             try {
                 const updatedCount = await this.userService.refreshDailyTokensIfNeeded();
                 if (updatedCount > 0) {
-                    console.log(`Hourly token check: Updated ${updatedCount} users.`);
+                    console.log(`🔄 4-hourly token check: Updated ${updatedCount} users.`);
                 }
             } catch (error) {
-                console.error('Error during hourly token check:', error);
+                console.error('🔄 Error during 4-hourly token check:', error);
             }
         }, {
             scheduled: true,
@@ -49,9 +64,10 @@ export class TokenScheduler {
         });
 
         this.isRunning = true;
-        console.log('Token scheduler started successfully');
-        console.log('- Daily refresh: Every day at 00:00 UTC');
-        console.log('- Hourly check: Every hour at minute 0');
+        console.log('🚀 Token scheduler started successfully');
+        console.log('🇮🇳 - IST Daily refresh: Every day at 00:00 IST (Asia/Kolkata)');
+        console.log('🌍 - UTC Daily refresh: Every day at 00:00 UTC (Global)');
+        console.log('🔄 - 4-hourly check: Every 4 hours at minute 0');
     }
 
     /**

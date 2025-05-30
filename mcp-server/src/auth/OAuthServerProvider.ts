@@ -131,13 +131,24 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
     ) => {
         try {
             const session = { client, params };
-            const state = randomBytes(32).toString("hex");
+
+            // Use the state parameter from the frontend if provided, otherwise generate one
+            const frontendState = params.state;
+            const state = frontendState || randomBytes(32).toString("hex");
+
+            console.log('🔧 OAuth authorize called with state:', {
+                frontendState: frontendState,
+                finalState: state,
+                hasUserIdInState: state.includes(':')
+            });
+
             this._sessionsStore.registerSession(state, session);
             const url = this._linkedinAuthClient.generateMemberAuthorizationUrl(
                 this._LINKEDIN_SCOPES,
                 state
             );
 
+            console.log('🔗 Redirecting to LinkedIn with state:', state);
             res.redirect(url);
         } catch (error) {
             console.error("OAuthServerProvider authorize error:", error);
@@ -182,7 +193,28 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
                 }
 
                 console.log('LinkedIn tokens obtained successfully');
-                const { id } = this._tokensStore.storeTokens(session, linkedinTokens);
+
+                // Extract user ID from state parameter (format: "randomState:userId")
+                let userId: string | undefined;
+                console.log('Raw state parameter:', state);
+
+                if (state && state.includes(':')) {
+                    // URL decode the state parameter first
+                    const decodedState = decodeURIComponent(state);
+                    console.log('Decoded state parameter:', decodedState);
+
+                    const parts = decodedState.split(':');
+                    if (parts.length === 2) {
+                        userId = parts[1];
+                        console.log('✅ Extracted user ID from state:', userId);
+                    } else {
+                        console.log('❌ State parameter format invalid:', parts);
+                    }
+                } else {
+                    console.log('❌ State parameter does not contain user ID separator (:)');
+                }
+
+                const { id } = await this._tokensStore.storeTokens(session, linkedinTokens, userId);
                 console.log('Tokens stored with ID:', id);
 
                 const code = randomBytes(32).toString("hex");
@@ -309,17 +341,22 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
     };
 
     public verifyAccessToken = async (accessToken: string) => {
-        const { jti, aud, exp, scopes } =
-            this._tokensStore.parseAccessToken(accessToken);
+        // Use the new TokenStore method that checks Supabase
+        const tokenData = await this._tokensStore.verifyAccessToken(accessToken);
+        const { jti, aud, exp, scopes } = this._tokensStore.parseAccessToken(accessToken);
 
-        const linkedinTokens = this._tokensStore.getTokens(jti)?.linkedinTokens;
+        console.log('🔍 OAuthServerProvider.verifyAccessToken result:', {
+            hasExtra: !!tokenData.extra,
+            hasLinkedInTokens: !!(tokenData.extra?.linkedinTokens),
+            linkedInTokensNull: tokenData.extra?.linkedinTokens === null
+        });
 
         return {
             token: accessToken,
             clientId: aud,
             scopes: scopes ?? [],
             expiresAt: exp,
-            extra: { linkedinTokens },
+            extra: tokenData.extra,
         };
     };
 

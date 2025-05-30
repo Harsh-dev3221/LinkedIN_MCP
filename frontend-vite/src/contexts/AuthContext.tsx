@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase, User, TokenStatus } from '../lib/supabase';
 import axios from 'axios';
@@ -12,7 +12,7 @@ interface AuthContextType {
     loading: boolean;
     signInWithGoogle: () => Promise<void>;
     connectLinkedIn: () => Promise<void>;
-    handleLinkedInCallback: (code: string, state: string) => Promise<void>;
+    handleLinkedInCallback: (code: string, state: string) => Promise<boolean>;
     refreshMcpToken: () => Promise<boolean>;
     refreshLinkedInStatus: () => Promise<void>;
     signOut: () => Promise<void>;
@@ -33,72 +33,197 @@ interface AuthProviderProps {
     children: React.ReactNode;
 }
 
+// Auth state machine to prevent cascading updates
+enum AuthState {
+    INITIALIZING = 'initializing',
+    AUTHENTICATED = 'authenticated',
+    CHECKING_LINKEDIN = 'checking_linkedin',
+    READY = 'ready',
+    ERROR = 'error'
+}
+
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+    // Core state
     const [user, setUser] = useState<User | null>(null);
     const [session, setSession] = useState<Session | null>(null);
     const [tokenStatus, setTokenStatus] = useState<TokenStatus | null>(null);
     const [linkedinConnected, setLinkedinConnected] = useState(false);
     const [mcpToken, setMcpToken] = useState<string | null>(() => {
-        // Initialize from localStorage
+        // SECURITY: Get token from localStorage but will validate ownership later
         return localStorage.getItem('mcp_token');
     });
+    const [lastAuthenticatedUserId, setLastAuthenticatedUserId] = useState<string | null>(() => {
+        return localStorage.getItem('last_user_id');
+    });
     const [loading, setLoading] = useState(true);
-    const processingUserRef = useRef<string | null>(null);
+
+    // State machine to prevent cascading updates
+    const [authState, setAuthState] = useState<AuthState>(AuthState.INITIALIZING);
+
+    // Refs to prevent duplicate operations
+    const initializationRef = useRef<boolean>(false);
+    const userCreationRef = useRef<Set<string>>(new Set());
+    const linkedinValidationRef = useRef<boolean>(false);
+    const tokenValidationCacheRef = useRef<{
+        token: string | null;
+        isValid: boolean;
+        timestamp: number;
+    }>({ token: null, isValid: false, timestamp: 0 });
+
+    // Additional protection against window focus and refresh issues
+    const lastProcessedSessionRef = useRef<string | null>(null);
+    const sessionProcessingRef = useRef<boolean>(false);
 
     const API_BASE_URL = import.meta.env.VITE_MCP_SERVER_URL;
+    const TOKEN_VALIDATION_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-    // Initialize auth state
+    // Single initialization effect - runs once only
     useEffect(() => {
-        // Get initial session
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-            if (session?.user) {
-                handleUserSession(session.user, session);
-            } else {
-                setLoading(false);
-            }
-        });
+        if (initializationRef.current) return;
+        initializationRef.current = true;
 
-        // Listen for auth changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
-                console.log('Auth state changed:', event, session?.user?.email);
+        const initializeAuth = async () => {
+            try {
+                setAuthState(AuthState.INITIALIZING);
+
+                // Get initial session
+                const { data: { session } } = await supabase.auth.getSession();
                 setSession(session);
 
+                // Set up auth listener FIRST (before processing initial session)
+                const { data: { subscription } } = supabase.auth.onAuthStateChange(
+                    async (event, session) => {
+                        console.log(`🔔 Auth event: ${event}, Session exists: ${!!session?.user}`);
+
+                        // Prevent processing if already processing a session
+                        if (sessionProcessingRef.current) {
+                            console.log(`⏳ BLOCKED: Session already being processed`);
+                            return;
+                        }
+
+                        // Create session identifier for deduplication
+                        const sessionId = session?.user ? `${session.user.id}-${session.access_token?.substring(0, 10)}` : null;
+
+                        // Skip if we just processed this exact session
+                        if (sessionId && lastProcessedSessionRef.current === sessionId) {
+                            console.log(`🔄 SKIPPED: Session already processed: ${sessionId}`);
+                            return;
+                        }
+
+                        setSession(session);
+
+                        // Only process specific auth events that require user creation
+                        if (event === 'SIGNED_IN') {
+                            if (session?.user) {
+                                lastProcessedSessionRef.current = sessionId;
+                                sessionProcessingRef.current = true;
+                                try {
+                                    await createOrGetUser(session.user, session);
+                                } finally {
+                                    sessionProcessingRef.current = false;
+                                }
+                            }
+                        } else if (event === 'SIGNED_OUT') {
+                            lastProcessedSessionRef.current = null;
+                            resetAuthState();
+                        } else if (event === 'TOKEN_REFRESHED') {
+                            // Don't create user on token refresh, just update session
+                            console.log(`🔄 Token refreshed, session updated`);
+                        } else {
+                            console.log(`ℹ️ Ignored auth event: ${event}`);
+                        }
+                    }
+                );
+
+                // Process initial session AFTER listener is set up
                 if (session?.user) {
-                    await handleUserSession(session.user, session);
+                    console.log(`🔄 Processing initial session for: ${session.user.email}`);
+                    const sessionId = `${session.user.id}-${session.access_token?.substring(0, 10)}`;
+                    lastProcessedSessionRef.current = sessionId;
+                    sessionProcessingRef.current = true;
+                    try {
+                        await createOrGetUser(session.user, session);
+                    } finally {
+                        sessionProcessingRef.current = false;
+                    }
                 } else {
-                    setUser(null);
-                    setTokenStatus(null);
+                    console.log(`ℹ️ No initial session found`);
+                    setAuthState(AuthState.READY);
                     setLoading(false);
                 }
-            }
-        );
 
-        return () => subscription.unsubscribe();
+                return () => subscription.unsubscribe();
+            } catch (error) {
+                console.error('Auth initialization error:', error);
+                setAuthState(AuthState.ERROR);
+                setLoading(false);
+            }
+        };
+
+        initializeAuth();
+    }, []); // Empty deps - run once only
+
+
+
+    // Reset auth state on logout - SECURITY: Clear ALL user data
+    const resetAuthState = useCallback(() => {
+        console.log('🧹 SECURITY: Clearing all user data and tokens');
+
+        // Clear React state
+        setUser(null);
+        setTokenStatus(null);
+        setLinkedinConnected(false);
+        setMcpToken(null);
+        setAuthState(AuthState.READY);
+        setLoading(false);
+
+        // SECURITY: Clear ALL localStorage items to prevent token leakage
+        localStorage.removeItem('mcp_token');
+        localStorage.removeItem('linkedin_oauth_state');
+        localStorage.removeItem('codeVerifier');
+        localStorage.removeItem('last_user_id');
+
+        // SECURITY: Clear all validation caches and refs
+        linkedinValidationRef.current = false;
+        tokenValidationCacheRef.current = { token: null, isValid: false, timestamp: 0 };
+        userCreationRef.current.clear();
+        lastProcessedSessionRef.current = null;
+        sessionProcessingRef.current = false;
+
+        console.log('✅ SECURITY: All user data cleared successfully');
     }, []);
 
-    const handleUserSession = async (supabaseUser: SupabaseUser, session: Session) => {
+    // Create or get user - ABSOLUTELY no duplicate calls
+    const createOrGetUser = useCallback(async (supabaseUser: SupabaseUser, session: Session) => {
+        const userKey = `${supabaseUser.id}-${supabaseUser.email}`;
+
+        console.log(`🔍 createOrGetUser called for: ${supabaseUser.email}`);
+
+        // FIRST CHECK: Prevent duplicate user creation
+        if (userCreationRef.current.has(userKey)) {
+            console.log(`❌ BLOCKED: User creation already in progress for: ${supabaseUser.email}`);
+            return;
+        }
+
+        // SECOND CHECK: If we already have this exact user, skip completely
+        if (user && user.email === supabaseUser.email) {
+            console.log(`✅ SKIPPED: User already exists: ${supabaseUser.email}`);
+            setLoading(false);
+            return;
+        }
+
+        // THIRD CHECK: If auth state is already READY or AUTHENTICATED, skip
+        if (authState === AuthState.READY || authState === AuthState.AUTHENTICATED) {
+            console.log(`✅ SKIPPED: Auth already in progress/complete for: ${supabaseUser.email}`);
+            setLoading(false);
+            return;
+        }
+
         try {
-            console.log('Handling user session for:', supabaseUser.email);
+            console.log(`🚀 PROCEEDING: Creating/getting user: ${supabaseUser.email}`);
+            userCreationRef.current.add(userKey);
+            setAuthState(AuthState.AUTHENTICATED);
 
-            // Check if we're already processing this user to prevent duplicate calls
-            if (processingUserRef.current === supabaseUser.email) {
-                console.log('Already processing user session for:', supabaseUser.email);
-                return;
-            }
-
-            // Check if we already have this user to prevent duplicate calls
-            if (user && user.email === supabaseUser.email) {
-                console.log('User already exists, skipping user creation');
-                setLoading(false);
-                return;
-            }
-
-            // Mark that we're processing this user
-            processingUserRef.current = supabaseUser.email || null;
-
-            // Create or get user in our backend
             const userData = {
                 email: supabaseUser.email!,
                 name: supabaseUser.user_metadata?.full_name || supabaseUser.user_metadata?.name,
@@ -107,77 +232,227 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 provider_id: supabaseUser.id
             };
 
-            console.log('Creating/getting user with data:', userData);
-
             const response = await axios.post(`${API_BASE_URL}/api/users`, userData, {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                timeout: 10000 // 10 second timeout
+                timeout: 10000
             });
 
-            console.log('User creation response:', response.data);
-            console.log('Response status:', response.status);
-            console.log('Response success field:', response.data.success);
-            console.log('Response user field:', response.data.user);
-
             if (response.data.success) {
-                setUser(response.data.user);
-                console.log('User set successfully, fetching token status...');
+                const backendUser = response.data.user;
+                console.log(`✅ SUCCESS: User created/retrieved: ${backendUser.email}`);
 
-                // Fetch token status immediately
-                await fetchTokenStatus(session.access_token);
+                // SECURITY: Check if this is a different user than last time
+                if (lastAuthenticatedUserId && lastAuthenticatedUserId !== backendUser.id) {
+                    console.log('🔄 SECURITY: Different user detected, clearing previous user data');
+                    localStorage.removeItem('mcp_token');
+                    localStorage.removeItem('linkedin_oauth_state');
+                    localStorage.removeItem('codeVerifier');
+                    setMcpToken(null);
+                    setLinkedinConnected(false);
+                    tokenValidationCacheRef.current = { token: null, isValid: false, timestamp: 0 };
+                }
 
-                // Validate LinkedIn connection using MCP token
-                await validateLinkedInConnection();
+                // Store current user ID for future security checks
+                setLastAuthenticatedUserId(backendUser.id);
+                localStorage.setItem('last_user_id', backendUser.id);
+
+                setUser(backendUser);
+
+                // Fetch token status (inline to avoid circular dependency)
+                try {
+                    const tokenResponse = await axios.get(`${API_BASE_URL}/api/users/tokens`, {
+                        headers: { Authorization: `Bearer ${session.access_token}` },
+                        timeout: 10000
+                    });
+                    if (tokenResponse.data.success) {
+                        setTokenStatus(tokenResponse.data.tokens);
+                    }
+                } catch (error) {
+                    console.error('Error fetching token status:', error);
+                }
+
+                // Check LinkedIn status (inline to avoid circular dependency)
+                if (mcpToken) {
+                    try {
+                        const response = await fetch(`${API_BASE_URL}/mcp`, {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${mcpToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                type: "call-tool",
+                                tool: "ping",
+                                params: {}
+                            }),
+                            signal: AbortSignal.timeout(10000)
+                        });
+                        const isValid = response.ok && !(await response.json()).isError;
+                        setLinkedinConnected(isValid);
+                    } catch (error) {
+                        setLinkedinConnected(false);
+                    }
+                } else {
+                    setLinkedinConnected(false);
+                }
+
+                setAuthState(AuthState.READY);
             } else {
-                console.error('Failed to create/get user:', response.data);
-                console.error('Success field is:', response.data.success);
+                throw new Error('Failed to create user');
             }
         } catch (error) {
-            console.error('Error handling user session:', error);
-            if (axios.isAxiosError(error)) {
-                console.error('Response data:', error.response?.data);
-                console.error('Response status:', error.response?.status);
-            }
+            console.error('❌ ERROR creating user:', error);
+            setAuthState(AuthState.ERROR);
         } finally {
-            // Clear the processing flag
-            processingUserRef.current = null;
+            userCreationRef.current.delete(userKey);
             setLoading(false);
         }
-    };
+    }, [user, authState, API_BASE_URL, mcpToken]);
 
-    const fetchTokenStatus = async (accessToken: string) => {
+    // Fetch token status from backend
+    const fetchTokenStatus = useCallback(async (accessToken: string) => {
         try {
-            console.log('Fetching token status with access token...');
             const response = await axios.get(`${API_BASE_URL}/api/users/tokens`, {
                 headers: {
                     Authorization: `Bearer ${accessToken}`
                 },
-                timeout: 10000 // 10 second timeout
+                timeout: 10000
             });
-
-            console.log('Token status response:', response.data);
 
             if (response.data.success) {
                 setTokenStatus(response.data.tokens);
-                console.log('Token status set successfully:', response.data.tokens);
-            } else {
-                console.error('Failed to get token status:', response.data);
             }
         } catch (error) {
             console.error('Error fetching token status:', error);
-            if (axios.isAxiosError(error)) {
-                console.error('Token fetch error - Status:', error.response?.status);
-                console.error('Token fetch error - Data:', error.response?.data);
-                console.error('Token fetch error - Headers:', error.response?.headers);
+        }
+    }, [API_BASE_URL]);
+
+    // Check LinkedIn connection status - only validates when needed
+    const checkLinkedInStatus = useCallback(async () => {
+        if (!mcpToken) {
+            setLinkedinConnected(false);
+            return;
+        }
+
+        // Prevent duplicate validation
+        if (linkedinValidationRef.current) {
+            return;
+        }
+
+        try {
+            linkedinValidationRef.current = true;
+            setAuthState(AuthState.CHECKING_LINKEDIN);
+
+            const isValid = await validateMcpToken(mcpToken);
+            setLinkedinConnected(isValid);
+
+            if (isValid) {
+                setAuthState(AuthState.READY);
+            }
+        } catch (error) {
+            console.error('Error checking LinkedIn status:', error);
+            setLinkedinConnected(false);
+        } finally {
+            linkedinValidationRef.current = false;
+        }
+    }, [mcpToken]);
+
+    // Effect to validate LinkedIn connection when mcpToken changes
+    useEffect(() => {
+        if (mcpToken && !linkedinValidationRef.current) {
+            console.log('🔍 MCP token detected, validating LinkedIn connection...');
+            checkLinkedInStatus();
+        } else if (!mcpToken) {
+            console.log('🔗 No MCP token, setting LinkedIn as disconnected');
+            setLinkedinConnected(false);
+        }
+    }, [mcpToken, checkLinkedInStatus]);
+
+    // Validate MCP token with caching and ownership verification
+    const validateMcpToken = useCallback(async (token: string, forceValidation = false): Promise<boolean> => {
+        // SECURITY: Always validate token ownership for current user
+        if (!user) {
+            console.warn('🔒 SECURITY: Cannot validate token without authenticated user');
+            return false;
+        }
+
+        // Check cache first (but only if not forcing validation)
+        if (!forceValidation) {
+            const cache = tokenValidationCacheRef.current;
+            const now = Date.now();
+
+            // SECURITY: Ensure cached token belongs to current user
+            if (cache.token === token && (now - cache.timestamp) < TOKEN_VALIDATION_CACHE_DURATION) {
+                console.log('🔒 Using cached token validation result');
+                return cache.isValid;
             }
         }
-    };
+
+        try {
+            console.log(`🔍 SECURITY: Validating token ownership for user: ${user.email}`);
+
+            const response = await fetch(`${API_BASE_URL}/mcp`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                    'X-User-ID': user.id // SECURITY: Include user ID for backend verification
+                },
+                body: JSON.stringify({
+                    type: "call-tool",
+                    tool: "ping",
+                    params: { userId: user.id } // SECURITY: Include user ID in request
+                }),
+                signal: AbortSignal.timeout(10000)
+            });
+
+            const responseData = await response.json();
+            const isValid = response.ok && !responseData.isError;
+
+            // SECURITY: Additional check for token ownership
+            if (isValid && responseData.userId && responseData.userId !== user.id) {
+                console.error('🚨 SECURITY VIOLATION: Token belongs to different user!');
+                console.error(`Expected user: ${user.id}, Token user: ${responseData.userId}`);
+                setMcpToken(null);
+                localStorage.removeItem('mcp_token');
+                setLinkedinConnected(false);
+                return false;
+            }
+
+            // Cache the result with user context
+            tokenValidationCacheRef.current = {
+                token,
+                isValid,
+                timestamp: Date.now()
+            };
+
+            if (!isValid && (response.status === 401 || response.status === 403)) {
+                console.log('🔒 SECURITY: Clearing invalid/unauthorized token');
+                setMcpToken(null);
+                localStorage.removeItem('mcp_token');
+                setLinkedinConnected(false);
+            }
+
+            console.log(`🔒 SECURITY: Token validation result: ${isValid ? 'VALID' : 'INVALID'}`);
+            return isValid;
+        } catch (error) {
+            console.error('🔒 SECURITY: Token validation failed:', error);
+            // Cache negative result
+            tokenValidationCacheRef.current = {
+                token,
+                isValid: false,
+                timestamp: Date.now()
+            };
+            return false;
+        }
+    }, [API_BASE_URL, user]);
 
 
 
-    const signInWithGoogle = async () => {
+    // Google OAuth sign in
+    const signInWithGoogle = useCallback(async () => {
         try {
             setLoading(true);
             const { error } = await supabase.auth.signInWithOAuth({
@@ -199,14 +474,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setLoading(false);
             throw error;
         }
-    };
+    }, []);
 
-    const connectLinkedIn = async () => {
+    // LinkedIn OAuth connection
+    const connectLinkedIn = useCallback(async () => {
         try {
             setLoading(true);
+
+            if (!user) {
+                throw new Error('User must be authenticated before connecting LinkedIn');
+            }
+
             // Generate and store state and code verifier for PKCE
             const state = Math.random().toString(36).substring(2, 15);
             const codeVerifier = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+            // Include user ID in the state for backend token storage
+            const stateWithUserId = `${state}:${user.id}`;
 
             localStorage.setItem('linkedin_oauth_state', state);
             localStorage.setItem('codeVerifier', codeVerifier);
@@ -218,7 +502,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             window.location.href = `${API_BASE_URL}/oauth/authorize?` +
                 `client_id=${clientId}&` +
                 `redirect_uri=${redirectUri}&` +
-                `state=${state}&` +
+                `state=${stateWithUserId}&` +
                 `code_challenge=${codeVerifier}&` +
                 `code_challenge_method=plain&` +
                 `scope=openid%20profile%20email%20w_member_social`;
@@ -226,12 +510,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setLoading(false);
             throw error;
         }
-    };
+    }, [API_BASE_URL, user]);
 
     const handleLinkedInCallback = async (code: string, state: string) => {
         try {
             setLoading(true);
-            console.log('Processing LinkedIn OAuth callback...');
+            console.log('🔗 Processing LinkedIn OAuth callback...');
+            console.log('Received state:', state);
 
             // Verify state parameter
             const storedState = localStorage.getItem('linkedin_oauth_state');
@@ -241,9 +526,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 throw new Error('Missing OAuth state or code verifier');
             }
 
-            if (state !== storedState) {
+            console.log('Stored state:', storedState);
+
+            // Extract the state part (before the colon) for comparison
+            let stateToCompare = state;
+            if (state.includes(':')) {
+                stateToCompare = state.split(':')[0];
+                console.log('Extracted state for comparison:', stateToCompare);
+            }
+
+            if (stateToCompare !== storedState) {
+                console.error('State mismatch:', { received: stateToCompare, stored: storedState });
                 throw new Error('Invalid OAuth state parameter');
             }
+
+            console.log('✅ State verification passed');
 
             // Exchange code for MCP token
             const response = await fetch(`${API_BASE_URL}/oauth/token`, {
@@ -270,123 +567,70 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 throw new Error('No access token received from LinkedIn OAuth');
             }
 
-            // Store the MCP token
+            // Store the MCP token FIRST
             setMcpToken(data.access_token);
             localStorage.setItem('mcp_token', data.access_token);
-            setLinkedinConnected(true);
+            console.log('🔑 MCP token stored successfully');
+
+            // Validate the token immediately and set connection status
+            console.log('🔍 Validating LinkedIn connection...');
+            const isValid = await validateMcpToken(data.access_token, true);
+
+            // CRITICAL: Set the connection status immediately and synchronously
+            setLinkedinConnected(isValid);
+
+            // Force a state update to ensure UI components get the latest state
+            if (isValid) {
+                console.log('✅ LinkedIn connection validated and state updated successfully');
+                // Clear the validation cache to force fresh validation on next check
+                tokenValidationCacheRef.current = {
+                    token: data.access_token,
+                    isValid: true,
+                    timestamp: Date.now()
+                };
+            } else {
+                console.warn('⚠️ LinkedIn connection validation failed');
+                // Clear invalid token
+                setMcpToken(null);
+                localStorage.removeItem('mcp_token');
+            }
 
             // Clean up localStorage
             localStorage.removeItem('linkedin_oauth_state');
             localStorage.removeItem('codeVerifier');
 
-            console.log('LinkedIn OAuth completed successfully');
+            console.log('🎉 LinkedIn OAuth completed successfully');
+
+            // Return the validation result for the callback component
+            return isValid;
         } catch (error) {
-            console.error('LinkedIn OAuth callback error:', error);
+            console.error('❌ LinkedIn OAuth callback error:', error);
             setLinkedinConnected(false);
-            setMcpToken(null);
-            throw error;
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const signOut = async () => {
-        try {
-            setLoading(true);
-            const { error } = await supabase.auth.signOut();
-            if (error) {
-                console.error('Sign out error:', error);
-                throw error;
-            }
-
-            setUser(null);
-            setTokenStatus(null);
-            setSession(null);
             setMcpToken(null);
             localStorage.removeItem('mcp_token');
-        } catch (error) {
-            console.error('Error signing out:', error);
             throw error;
         } finally {
             setLoading(false);
         }
     };
 
-    const refreshTokenStatus = async () => {
-        if (session?.access_token) {
-            await fetchTokenStatus(session.access_token);
-            // Don't use the old checkLinkedInConnection - use MCP token validation instead
-            await validateLinkedInConnection();
-        }
-    };
 
-    // Validate LinkedIn connection by checking MCP token
-    const validateLinkedInConnection = async () => {
+
+    // Manually refresh LinkedIn connection status (forces validation)
+    const refreshLinkedInStatus = useCallback(async () => {
+        console.log('🔄 Manually refreshing LinkedIn connection status...');
         if (mcpToken) {
-            const isValid = await validateMcpToken(mcpToken);
+            const isValid = await validateMcpToken(mcpToken, true); // Force validation
             setLinkedinConnected(isValid);
+            console.log(`🔗 LinkedIn connection status updated: ${isValid ? 'Connected' : 'Disconnected'}`);
         } else {
             setLinkedinConnected(false);
+            console.log('🔗 LinkedIn connection status updated: Disconnected (no token)');
         }
-    };
-
-    // Manually refresh LinkedIn connection status
-    const refreshLinkedInStatus = async () => {
-        console.log('Manually refreshing LinkedIn connection status...');
-        await validateLinkedInConnection();
-    };
-
-    // Check if stored MCP token is still valid
-    const validateMcpToken = async (token: string): Promise<boolean> => {
-        try {
-            const response = await fetch(`${API_BASE_URL}/mcp`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    type: "call-tool",
-                    tool: "ping",
-                    params: {}
-                }),
-                signal: AbortSignal.timeout(10000) // 10 second timeout
-            });
-
-            if (response.ok) {
-                const data = await response.json();
-                if (!data.isError) {
-                    return true;
-                }
-            }
-
-            // Only clear token on authentication errors (401/403)
-            if (response.status === 401 || response.status === 403) {
-                console.log('MCP token expired or invalid, clearing...');
-                setMcpToken(null);
-                localStorage.removeItem('mcp_token');
-                setLinkedinConnected(false);
-                return false;
-            }
-
-            // For other errors (network, server errors), don't clear the token
-            console.warn('MCP token validation failed with non-auth error:', response.status);
-            return false;
-        } catch (error: any) {
-            // Only clear token if it's clearly an authentication issue
-            if (error.name === 'AbortError') {
-                console.warn('MCP token validation timed out');
-                return false;
-            }
-
-            console.warn('MCP token validation error:', error.message);
-            // Don't clear token on network errors - it might be temporary
-            return false;
-        }
-    };
+    }, [mcpToken, validateMcpToken]);
 
     // Refresh MCP token by re-authenticating with LinkedIn
-    const refreshMcpToken = async (): Promise<boolean> => {
+    const refreshMcpToken = useCallback(async (): Promise<boolean> => {
         try {
             if (!user) {
                 console.error('No user found for MCP token refresh');
@@ -410,22 +654,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [user, connectLinkedIn]);
 
-    // Validate MCP token on app load and when token changes
-    useEffect(() => {
-        if (mcpToken && user) {
-            validateMcpToken(mcpToken).then(isValid => {
-                setLinkedinConnected(isValid);
-                if (!isValid) {
-                    console.log('MCP token validation failed - LinkedIn connection set to false');
-                }
-            });
-        } else {
-            // No MCP token means no LinkedIn connection
-            setLinkedinConnected(false);
+    // Refresh token status
+    const refreshTokenStatus = useCallback(async () => {
+        if (session?.access_token) {
+            await fetchTokenStatus(session.access_token);
         }
-    }, [mcpToken, user]);
+    }, [session?.access_token, fetchTokenStatus]);
+
+    // Sign out function
+    const signOut = useCallback(async () => {
+        try {
+            setLoading(true);
+            const { error } = await supabase.auth.signOut();
+            if (error) {
+                console.error('Sign out error:', error);
+                throw error;
+            }
+
+            // Reset all state
+            resetAuthState();
+        } catch (error) {
+            console.error('Error signing out:', error);
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    }, [resetAuthState]);
 
     const value: AuthContextType = {
         user,
