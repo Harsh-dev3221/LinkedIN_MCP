@@ -617,12 +617,247 @@ export class Tools {
         };
     }
 
-    // Analyze image and create LinkedIn post content
+    // Content moderation and filtering
+    private validatePromptContent(prompt: string): { isValid: boolean; reason?: string } {
+        const lowerPrompt = prompt.toLowerCase();
+
+        // Inappropriate content patterns
+        const inappropriatePatterns = [
+            // Discriminatory content
+            /\b(hate|discriminat|racist|sexist|homophobic|transphobic)\b/i,
+            /\b(inferior|superior)\s+(race|gender|religion|ethnicity)/i,
+
+            // Political content
+            /\b(vote for|support|oppose|against)\s+[a-z]+\s+(party|candidate|politician)/i,
+            /\b(democrat|republican|liberal|conservative)\s+(are|is)\s+(bad|wrong|evil)/i,
+
+            // Personal/private information
+            /\b(my salary|my income|company secrets|internal issues|confidential)/i,
+            /\b(my boss is|my manager is|my company is)\s+(bad|terrible|awful)/i,
+
+            // False claims
+            /\b(fake|false|made up|fabricated)\s+(statistics|data|credentials)/i,
+            /\b(claim|say|pretend)\s+i\s+(have|am|own)\s+[^.]*\s+(degree|certification|experience)\s+i\s+don't/i,
+
+            // Overly personal content
+            /\b(my depression|my anxiety|my mental health|my therapy|my medication)/i,
+            /\b(my divorce|my breakup|my relationship problems|my financial problems)/i,
+            /\b(my debt|my bankruptcy|my addiction|my substance)/i,
+
+            // Spam/MLM content
+            /\b(mlm|multi.?level marketing|pyramid scheme|get rich quick)/i,
+            /\b(dm me|message me|contact me)\s+for\s+(money|cash|opportunity)/i,
+            /\b(make money|earn cash|financial freedom)\s+(from home|quickly|easily)/i,
+
+            // Inappropriate requests
+            /\b(nude|sexual|explicit|inappropriate|nsfw)/i,
+            /\b(hack|illegal|unethical|scam|fraud)/i,
+        ];
+
+        // Check for inappropriate patterns
+        for (const pattern of inappropriatePatterns) {
+            if (pattern.test(prompt)) {
+                return {
+                    isValid: false,
+                    reason: "Content contains inappropriate or unprofessional elements that are not suitable for LinkedIn"
+                };
+            }
+        }
+
+        // Check for excessive self-promotion
+        const promotionKeywords = ['buy', 'purchase', 'sale', 'discount', 'offer', 'deal', 'price'];
+        const promotionCount = promotionKeywords.filter(keyword => lowerPrompt.includes(keyword)).length;
+        if (promotionCount >= 3) {
+            return {
+                isValid: false,
+                reason: "Content appears to be overly promotional. LinkedIn posts should focus on value and insights rather than direct sales"
+            };
+        }
+
+        // Check for excessive personal details
+        const personalKeywords = ['my personal', 'my private', 'my secret', 'confidential', 'don\'t tell'];
+        if (personalKeywords.some(keyword => lowerPrompt.includes(keyword))) {
+            return {
+                isValid: false,
+                reason: "Content contains personal information that may not be appropriate for professional networking"
+            };
+        }
+
+        return { isValid: true };
+    }
+
+    // Generate enhanced LinkedIn post content from text using Gemini 2.0 Flash
+    public generateTextContent = async (
+        { prompt }: { prompt: string },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            // Validate prompt content first
+            const validation = this.validatePromptContent(prompt);
+            if (!validation.isValid) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `Content validation failed: ${validation.reason}\n\nPlease provide professional, appropriate content suitable for LinkedIn networking.`
+                    }]
+                };
+            }
+
+            // Check if GEMINI_API_KEY is configured
+            const geminiApiKey = process.env.GEMINI_API_KEY;
+            if (!geminiApiKey) {
+                throw new Error("GEMINI_API_KEY is not configured in the environment");
+            }
+
+            // Get user information to personalize the prompt
+            const userInfoResult = await this.getUserInfo(linkedinTokens);
+            let userName = "professional";
+
+            if (!userInfoResult.isError) {
+                try {
+                    const userInfo = JSON.parse(userInfoResult.content[0].text);
+                    userName = `${userInfo.firstName} ${userInfo.lastName}`;
+                } catch (e) {
+                    console.log("Error parsing user info, using default prompt");
+                }
+            }
+
+            // Enhanced professional prompt for text-only content
+            const enhancedPrompt = `
+You are writing a LinkedIn post directly. Do not include any introductory text, explanations, or meta-commentary.
+
+Transform this topic into a natural LinkedIn post: ${prompt}
+
+Write for ${userName} using these guidelines:
+
+CONTENT REQUIREMENTS:
+- Professional yet conversational tone that sounds natural on LinkedIn
+- 800-1200 characters for optimal engagement
+- Start immediately with engaging content - no introductions or explanations
+- Clear value proposition that resonates with professionals
+- Industry-relevant insights that demonstrate expertise
+
+STRUCTURE:
+- Open with an attention-grabbing first line that hooks readers immediately
+- 2-3 short, scannable paragraphs (1-2 sentences each)
+- End with an engaging question or call-to-action to drive comments
+- Include 3-5 relevant professional hashtags at the end
+
+FORMATTING:
+- Use single line breaks between paragraphs for mobile readability
+- Minimal use of bold text (only for 1-2 key phrases maximum)
+- Include 1-2 relevant emojis sparingly for visual appeal
+- Keep paragraphs very short for easy scanning
+
+ABSOLUTELY FORBIDDEN - DO NOT INCLUDE:
+- Any introductory phrases like "Here's a LinkedIn post", "Okay, here's", "Draft for", etc.
+- Subject lines or email-style headers
+- Meta-commentary about the post or guidelines
+- Explanatory text before or after the post
+- Placeholder text in brackets like [company name], [industry], [link]
+- Separators like "---" or "***"
+
+IMPORTANT: Start your response immediately with the first word of the LinkedIn post content. No preamble, no explanation, just the post itself.
+            `;
+
+            console.log("Calling Gemini 2.0 Flash for text content generation...");
+
+            // Call Gemini 2.0 Flash API for enhanced text content creation
+            const response = await axios.post(
+                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
+                {
+                    contents: [
+                        {
+                            parts: [
+                                { text: enhancedPrompt }
+                            ]
+                        }
+                    ],
+                    generationConfig: {
+                        temperature: 0.8,
+                        maxOutputTokens: 1000,
+                        topP: 0.9,
+                        topK: 40
+                    }
+                },
+                {
+                    params: { key: geminiApiKey },
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 20000 // 20 second timeout for text processing
+                }
+            );
+
+            // Validate and extract the response
+            if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
+                throw new Error("Invalid response from Gemini API: Missing candidates");
+            }
+
+            if (!response.data.candidates[0].content || !response.data.candidates[0].content.parts) {
+                throw new Error("Invalid response from Gemini API: Missing content");
+            }
+
+            const generatedContent = response.data.candidates[0].content.parts[0].text;
+            if (!generatedContent) {
+                throw new Error("Gemini API returned empty content");
+            }
+
+            console.log("Successfully generated enhanced text content with Gemini 2.0 Flash");
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: generatedContent,
+                    }
+                ]
+            };
+        } catch (e: any) {
+            console.error('Text content generation error:', e.response?.data || e.message);
+
+            // Detailed error handling for different scenarios
+            let errorMessage = "Unknown error occurred";
+
+            if (e.response?.data?.error) {
+                // Specific Gemini API error
+                errorMessage = `Gemini API error: ${e.response.data.error.message}`;
+                console.error('Gemini API error details:', e.response.data.error);
+            } else if (e.message.includes("GEMINI_API_KEY")) {
+                errorMessage = "The server is not configured with a Gemini API key. Please contact the administrator.";
+            } else if (e.code === 'ECONNABORTED') {
+                errorMessage = "The request to Gemini API timed out. Please try again.";
+            } else if (e.message) {
+                errorMessage = e.message;
+            }
+
+            return {
+                isError: true,
+                content: [{
+                    type: "text",
+                    text: `Error generating content: ${errorMessage}`
+                }]
+            };
+        }
+    }
+
+    // Analyze image and create LinkedIn post content using Gemma-3-27b-it for image analysis
     public analyzeImageAndCreateContent = async (
         { imageBase64, prompt, mimeType }: { imageBase64: string, prompt: string, mimeType: string },
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
+            // Validate prompt content first
+            const validation = this.validatePromptContent(prompt);
+            if (!validation.isValid) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `Content validation failed: ${validation.reason}\n\nPlease provide professional, appropriate content suitable for LinkedIn networking.`
+                    }]
+                };
+            }
+
             // Check if GEMINI_API_KEY is configured
             const geminiApiKey = process.env.GEMINI_API_KEY;
             if (!geminiApiKey) {
@@ -647,34 +882,56 @@ export class Tools {
                 throw new Error("Invalid image data provided");
             }
 
-            // Updated prompt with enhanced instructions
+            // Enhanced professional prompt for image analysis
             const improvedPrompt = `
-    Analyze the provided image and the following instructions to create a highly professional LinkedIn post for ${userName}.
+You are writing a LinkedIn post directly. Do not include any introductory text, explanations, or meta-commentary.
 
-    Instructions: ${prompt}
+Analyze the provided image and create a natural LinkedIn post based on these instructions: ${prompt}
 
-    Guidelines for the LinkedIn post:
-    1. **Tone**: Maintain a very professional tone throughout. Use formal language and avoid any casual or informal expressions.
-    2. **Content Integration**: Thoroughly analyze both the image and the instructions to ensure the post is cohesive and directly relevant. The image and text should complement each other seamlessly.
-    3. **Conciseness**: Aim for 150-250 words, focusing strictly on the most important points. Exclude any extraneous details that do not directly contribute to the main message.
-    4. **Hashtags**: Include 3-5 hashtags that are widely recognized and frequently used in professional LinkedIn discussions related to the topic.
-    5. **Call-to-Action**: Incorporate a clear and compelling call-to-action to encourage engagement, such as inviting comments or shares.
-    6. **SEO Optimization**: Integrate keywords and phrases that professionals are likely to search for on LinkedIn when looking for content on this topic.
-    7. **Formatting**: Use appropriate line breaks and keep paragraphs short for better readability.
+Write for ${userName} using these guidelines:
 
-    Ensure that the generated post adheres strictly to these guidelines and does not include any additional commentary or explanations.
+CONTENT REQUIREMENTS:
+- Professional yet conversational tone that sounds natural on LinkedIn
+- 800-1200 characters for optimal engagement
+- Start immediately with engaging content - no introductions or explanations
+- Seamlessly integrate image insights with the provided instructions
+- Industry-relevant insights that demonstrate expertise
+
+STRUCTURE:
+- Open with an attention-grabbing first line that hooks readers immediately
+- 2-3 short, scannable paragraphs (1-2 sentences each) connecting image to professional insights
+- End with an engaging question or call-to-action to drive comments
+- Include 3-5 relevant professional hashtags at the end
+
+FORMATTING:
+- Use single line breaks between paragraphs for mobile readability
+- Minimal use of bold text (only for 1-2 key phrases maximum)
+- Include 1-2 relevant emojis sparingly for visual appeal
+- Keep paragraphs very short for easy scanning
+
+ABSOLUTELY FORBIDDEN - DO NOT INCLUDE:
+- Any introductory phrases like "Here's a LinkedIn post", "Okay, here's", "Draft for", etc.
+- Subject lines or email-style headers
+- Meta-commentary about the post or guidelines
+- Explanatory text before or after the post
+- Placeholder text in brackets like [company name], [industry], [link to website], [mention industry/niche]
+- Phrases like "Learn more at [website]" or "Register at [link]"
+- Any text in square brackets [ ]
+- Separators like "---" or "***"
+
+IMPORTANT: Start your response immediately with the first word of the LinkedIn post content. No preamble, no explanation, just the post itself.
             `;
 
-            console.log("Calling Gemini API for image analysis...");
+            console.log("Calling Gemma-3-27b-it for image analysis...");
             console.log("Image type:", mimeType);
             console.log("Image data length:", imageBase64.length);
 
             // Format the image data properly - ensure it doesn't include the data:image prefix
             const cleanedImageData = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
 
-            // Call Gemini API for image analysis and content creation
+            // Call Gemini API with Gemma-3-27b-it model for image analysis and content creation
             const response = await axios.post(
-                'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
+                'https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent',
                 {
                     contents: [
                         {
@@ -691,7 +948,7 @@ export class Tools {
                     ],
                     generationConfig: {
                         temperature: 0.7,
-                        maxOutputTokens: 800,
+                        maxOutputTokens: 1000,
                         topP: 0.9
                     }
                 },
@@ -704,35 +961,25 @@ export class Tools {
 
             // Validate and extract the response
             if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
-                throw new Error("Invalid response from Gemini API: Missing candidates");
+                throw new Error("Invalid response from Gemma API: Missing candidates");
             }
 
             if (!response.data.candidates[0].content || !response.data.candidates[0].content.parts) {
-                throw new Error("Invalid response from Gemini API: Missing content");
+                throw new Error("Invalid response from Gemma API: Missing content");
             }
 
             const generatedContent = response.data.candidates[0].content.parts[0].text;
             if (!generatedContent) {
-                throw new Error("Gemini API returned empty content");
+                throw new Error("Gemma API returned empty content");
             }
 
-            // Add a note about using UGC Posts for longer content
-            const contentLength = generatedContent.length;
-            let noteAboutLength = "";
-
-            if (contentLength > 1300) {
-                noteAboutLength = "\n\nNote: This generated content is " + contentLength +
-                    " characters, which exceeds LinkedIn's 1,300 character limit for the legacy /shares endpoint. " +
-                    "Please use the 'Create UGC Post' feature instead, which supports up to 3,000 characters.";
-            }
-
-            console.log("Successfully generated content with Gemini API");
+            console.log("Successfully generated content with Gemma-3-27b-it");
 
             return {
                 content: [
                     {
                         type: "text",
-                        text: generatedContent + noteAboutLength,
+                        text: generatedContent,
                     }
                 ]
             };
@@ -743,15 +990,15 @@ export class Tools {
             let errorMessage = "Unknown error occurred";
 
             if (e.response?.data?.error) {
-                // Specific Gemini API error
-                errorMessage = `Gemini API error: ${e.response.data.error.message}`;
-                console.error('Gemini API error details:', e.response.data.error);
+                // Specific API error
+                errorMessage = `API error: ${e.response.data.error.message}`;
+                console.error('API error details:', e.response.data.error);
             } else if (e.message === "Invalid image data provided") {
                 errorMessage = "The image data provided is invalid or too small. Please try a different image.";
             } else if (e.message.includes("GEMINI_API_KEY")) {
                 errorMessage = "The server is not configured with a Gemini API key. Please contact the administrator.";
             } else if (e.code === 'ECONNABORTED') {
-                errorMessage = "The request to Gemini API timed out. The image might be too large or complex.";
+                errorMessage = "The request to API timed out. The image might be too large or complex.";
             } else if (e.message) {
                 errorMessage = e.message;
             }
@@ -776,6 +1023,18 @@ export class Tools {
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
+            // Validate prompt content first
+            const validation = this.validatePromptContent(content);
+            if (!validation.isValid) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `Content validation failed: ${validation.reason}\n\nPlease provide professional, appropriate content suitable for LinkedIn networking.`
+                    }]
+                };
+            }
+
             // Get user ID with minimal projection
             const userId = await this.getUserId(linkedinTokens);
 
@@ -842,6 +1101,18 @@ export class Tools {
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
+            // Validate prompt content first
+            const validation = this.validatePromptContent(userText);
+            if (!validation.isValid) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `Content validation failed: ${validation.reason}\n\nPlease provide professional, appropriate content suitable for LinkedIn networking.`
+                    }]
+                };
+            }
+
             console.log("Starting combined image analysis and posting process (updated flow)...");
 
             // Clean image data for Gemini and calculate size (as in original)
@@ -904,7 +1175,9 @@ export class Tools {
                         console.log("Image analysis succeeded. Creating structured content...");
 
                         const contentPrompt = `
-Create a professional LinkedIn post that incorporates this user's draft text and information from the image analysis.
+You are writing a LinkedIn post directly. Do not include any introductory text, explanations, or meta-commentary.
+
+Create a natural LinkedIn post that incorporates this user's draft text and information from the image analysis.
 
 User's draft text:
 ${userText}
@@ -912,15 +1185,42 @@ ${userText}
 Image analysis:
 ${imageAnalysisContext}
 
-Guidelines:
-- Professional tone suitable for LinkedIn
-- Concise and engaging (under 1000 characters)
-- Incorporate relevant elements from the image without explicitly describing it
-- Preserve the user's key points and intent
+Write using these guidelines:
+
+CONTENT REQUIREMENTS:
+- Professional yet conversational tone that sounds natural on LinkedIn
+- 800-1200 characters for optimal engagement
+- Start immediately with engaging content - no introductions or explanations
+- Seamlessly integrate image insights with the user's draft text
+- Industry-relevant insights that demonstrate expertise
+
+STRUCTURE:
+- Open with an attention-grabbing first line that hooks readers immediately
+- 2-3 short, scannable paragraphs (1-2 sentences each) connecting image to professional insights
+- End with an engaging question or call-to-action to drive comments
+- Include 3-5 relevant professional hashtags at the end
+
+FORMATTING:
+- Use single line breaks between paragraphs for mobile readability
+- Minimal use of bold text (only for 1-2 key phrases maximum)
+- Include 1-2 relevant emojis sparingly for visual appeal
+- Keep paragraphs very short for easy scanning
+
+ABSOLUTELY FORBIDDEN - DO NOT INCLUDE:
+- Any introductory phrases like "Here's a LinkedIn post", "Okay, here's", "Draft for", etc.
+- Subject lines or email-style headers
+- Meta-commentary about the post or guidelines
+- Explanatory text before or after the post
+- Placeholder text in brackets like [company name], [industry], [link to website], [mention industry/niche]
+- Phrases like "Learn more at [website]" or "Register at [link]"
+- Any text in square brackets [ ]
+- Separators like "---" or "***"
+
+IMPORTANT: Start your response immediately with the first word of the LinkedIn post content. No preamble, no explanation, just the post itself.
 `;
 
                         const contentResponse = await axios.post(
-                            'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
+                            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
                             {
                                 contents: [{ parts: [{ text: contentPrompt }] }],
                                 generationConfig: {
@@ -1077,9 +1377,11 @@ Guidelines:
                         const imageAnalysisContext = imageAnalysisResponse.data.candidates[0].content.parts[0].text;
                         console.log("Image analysis succeeded. Creating structured content...");
 
-                        // We'll use a simpler approach for the second API call to avoid more timeouts
+                        // Enhanced professional prompt for content generation
                         const contentPrompt = `
-Create a professional LinkedIn post that incorporates this user's draft text and information from the image analysis.
+You are writing a LinkedIn post directly. Do not include any introductory text, explanations, or meta-commentary.
+
+Create a natural LinkedIn post that incorporates this user's draft text and information from the image analysis.
 
 User's draft text:
 ${userText}
@@ -1087,15 +1389,42 @@ ${userText}
 Image analysis:
 ${imageAnalysisContext}
 
-Guidelines:
-- Professional tone suitable for LinkedIn
-- Concise and engaging (under 1000 characters)
-- Incorporate relevant elements from the image without explicitly describing it
-- Preserve the user's key points and intent
+Write using these guidelines:
+
+CONTENT REQUIREMENTS:
+- Professional yet conversational tone that sounds natural on LinkedIn
+- 800-1200 characters for optimal engagement
+- Start immediately with engaging content - no introductions or explanations
+- Seamlessly integrate image insights with the user's draft text
+- Industry-relevant insights that demonstrate expertise
+
+STRUCTURE:
+- Open with an attention-grabbing first line that hooks readers immediately
+- 2-3 short, scannable paragraphs (1-2 sentences each) connecting image to professional insights
+- End with an engaging question or call-to-action to drive comments
+- Include 3-5 relevant professional hashtags at the end
+
+FORMATTING:
+- Use single line breaks between paragraphs for mobile readability
+- Minimal use of bold text (only for 1-2 key phrases maximum)
+- Include 1-2 relevant emojis sparingly for visual appeal
+- Keep paragraphs very short for easy scanning
+
+ABSOLUTELY FORBIDDEN - DO NOT INCLUDE:
+- Any introductory phrases like "Here's a LinkedIn post", "Okay, here's", "Draft for", etc.
+- Subject lines or email-style headers
+- Meta-commentary about the post or guidelines
+- Explanatory text before or after the post
+- Placeholder text in brackets like [company name], [industry], [link to website], [mention industry/niche]
+- Phrases like "Learn more at [website]" or "Register at [link]"
+- Any text in square brackets [ ]
+- Separators like "---" or "***"
+
+IMPORTANT: Start your response immediately with the first word of the LinkedIn post content. No preamble, no explanation, just the post itself.
 `;
 
                         const contentResponse = await axios.post(
-                            'https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent',
+                            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
                             {
                                 contents: [{ parts: [{ text: contentPrompt }] }],
                                 generationConfig: {
@@ -1448,6 +1777,18 @@ Guidelines:
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
+            // Validate prompt content first
+            const validation = this.validatePromptContent(text);
+            if (!validation.isValid) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `Content validation failed: ${validation.reason}\n\nPlease provide professional, appropriate content suitable for LinkedIn networking.`
+                    }]
+                };
+            }
+
             Logger.info("=== LINKEDIN MULTI-IMAGE POST START ===");
             Logger.info("Starting LinkedIn multi-image post...");
 

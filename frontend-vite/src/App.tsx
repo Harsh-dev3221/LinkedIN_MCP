@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 
 import { AuthProvider } from './contexts/AuthContext';
@@ -6,7 +6,7 @@ import GradientBackground from './components/GradientBackground';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import AuthCallback from './components/AuthCallback';
-import UserDashboard from './components/UserDashboard';
+import DashboardLayout from './components/dashboard/DashboardLayout';
 import NewUnifiedPostCreator from './components/NewUnifiedPostCreator';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -91,25 +91,9 @@ const theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
+        // Remove global body styles to prevent conflicts with Tailwind dashboard
         body: {
-          background: 'linear-gradient(135deg, #FAF7F2 0%, #F5F1EA 100%)',
-          minHeight: '100vh',
-          position: 'relative',
-          '&::before': {
-            content: '""',
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: `
-              radial-gradient(circle at 20% 20%, rgba(245, 166, 35, 0.15) 0%, transparent 50%),
-              radial-gradient(circle at 80% 80%, rgba(10, 102, 194, 0.1) 0%, transparent 50%),
-              radial-gradient(circle at 40% 60%, rgba(245, 166, 35, 0.08) 0%, transparent 50%)
-            `,
-            pointerEvents: 'none',
-            zIndex: -1,
-          },
+          fontFamily: '"Inter", "Segoe UI", "Roboto", "Helvetica", "Arial", sans-serif',
         },
       },
     },
@@ -201,14 +185,19 @@ const theme = createTheme({
 // Main content component that has access to routing
 function AppContent() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleCreatePost = () => {
     navigate('/create');
   };
 
+  // Check if we're on dashboard or create routes (pure Tailwind routes)
+  const isPureTailwindRoute = location.pathname.startsWith('/dashboard') || location.pathname.startsWith('/create');
+
   return (
     <div className="app-container">
-      <GradientBackground />
+      {/* Only show GradientBackground for non-dashboard routes */}
+      {!isPureTailwindRoute && <GradientBackground />}
       <Routes>
         <Route
           path="/"
@@ -220,7 +209,7 @@ function AppContent() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <UserDashboard onCreatePost={handleCreatePost} />
+              <DashboardLayout onCreatePost={handleCreatePost} />
             </ProtectedRoute>
           }
         />

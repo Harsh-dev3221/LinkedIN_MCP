@@ -249,7 +249,7 @@ const NewUnifiedPostCreator = () => {
             }
             // Text-only post
             else {
-                const result = await mcpClient.callTool('create-post', {
+                const result = await mcpClient.callTool('publish-text-post', {
                     content: generatedContent,
                     userId: user.id
                 });
@@ -437,22 +437,25 @@ const NewUnifiedPostCreator = () => {
                             </Box>
                             <Stack direction="row" spacing={1}>
                                 <Chip
-                                    label={`Basic: ${TOKEN_COSTS.BASIC_POST} tokens`}
+                                    label={`Text Post: FREE`}
                                     color="success"
                                     size="small"
                                 />
                                 <Chip
-                                    label={`Enhanced: ${TOKEN_COSTS.SINGLE_POST} tokens`}
+                                    label={`Single Image: ${TOKEN_COSTS.SINGLE_POST} tokens`}
                                     color="primary"
                                     size="small"
                                 />
                                 <Chip
-                                    label={`Multi: ${TOKEN_COSTS.MULTIPLE_POST} tokens`}
+                                    label={`Multi Image: ${TOKEN_COSTS.MULTIPLE_POST} tokens`}
                                     color="warning"
                                     size="small"
                                 />
                             </Stack>
                         </Stack>
+                        <Typography variant="caption" sx={{ mt: 1, display: 'block', textAlign: 'center', color: 'text.secondary' }}>
+                            💡 Content generation is FREE • Tokens are only consumed when publishing
+                        </Typography>
                     </CardContent>
                 </Card>
             )}

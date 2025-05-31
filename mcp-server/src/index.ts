@@ -312,10 +312,10 @@ server.tool(
     }
 );
 
-// Register create-post tool (Basic post - Free)
+// Register create-post tool (Basic post - FREE content generation only)
 server.tool(
     "create-post",
-    "Create a basic post on LinkedIn (Free - 0 tokens)",
+    "Generate AI-enhanced LinkedIn post content (FREE - content generation only)",
     {
         content: z.string(),
         userId: z.string().optional(),
@@ -334,8 +334,54 @@ server.tool(
             throw new Error("LinkedIn tokens not found in session");
         }
 
-        // For basic posts, no token consumption required
         const linkedinTokens = transport.auth.extra.linkedinTokens;
+
+        // Generate enhanced content using Gemini 2.0 Flash (FREE)
+        const enhancedContentResult = await tools.generateTextContent({ prompt: content }, linkedinTokens);
+
+        if (enhancedContentResult.isError) {
+            // If AI enhancement fails, return original content
+            console.warn('AI enhancement failed, returning original content:', enhancedContentResult.content[0].text);
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: content
+                    }
+                ]
+            };
+        }
+
+        // Return the enhanced content for user review
+        return enhancedContentResult;
+    }
+);
+
+// Register publish-text-post tool (Basic post publishing - FREE)
+server.tool(
+    "publish-text-post",
+    "Publish text content to LinkedIn (FREE - publishing only)",
+    {
+        content: z.string(),
+        userId: z.string().optional(),
+    },
+    async ({ content, userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+
+        // Publish the content to LinkedIn
         const result = await tools.createUgcPost({ content }, linkedinTokens);
 
         // Record the post if userId is provided
@@ -352,10 +398,10 @@ server.tool(
     }
 );
 
-// Register analyze-image-create-post tool (Single post - 5 tokens)
+// Register analyze-image-create-post tool (Content generation only - FREE)
 server.tool(
     "analyze-image-create-post",
-    "Analyze an image and create LinkedIn post content (5 tokens)",
+    "Analyze an image and create LinkedIn post content (FREE - content generation only)",
     {
         imageBase64: z.string(),
         prompt: z.string(),
@@ -376,26 +422,11 @@ server.tool(
             throw new Error("LinkedIn tokens not found in session");
         }
 
-        // Check and consume tokens
-        const canConsume = await userService.canConsumeTokens(userId, 'SINGLE_POST');
-        if (!canConsume) {
-            throw new Error("Insufficient tokens for single post generation");
-        }
-
-        const consumed = await userService.consumeTokens(userId, 'SINGLE_POST', prompt);
-        if (!consumed) {
-            throw new Error("Failed to consume tokens");
-        }
-
+        // No token consumption for content generation - this is FREE
         const linkedinTokens = transport.auth.extra.linkedinTokens;
         const result = await tools.analyzeImageAndCreateContent({ imageBase64, prompt, mimeType }, linkedinTokens);
 
-        // Record the post
-        try {
-            await userService.recordPost(userId, result.content[0].text, TOKEN_COSTS.SINGLE_POST, 'single');
-        } catch (error) {
-            console.error('Error recording single post:', error);
-        }
+        // No post recording for content generation - only for actual publishing
 
         return result;
     }
