@@ -13,6 +13,7 @@ import { TransportsStore, AuthInfo } from "./mcp/TransportsStore.js";
 import { OAuthTokens } from "./auth/TokenStore.js";
 import { authMiddleware } from "./middleware/auth.js";
 import { UserService } from "./services/UserService.js";
+import { LinkedInTokenService } from "./services/LinkedInTokenService.js";
 import { tokenScheduler } from "./services/TokenScheduler.js";
 import { TOKEN_COSTS } from "./database/supabase.js";
 import userRoutes from "./routes/users.js";
@@ -116,6 +117,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Initialize services
 const userService = new UserService();
+const linkedinTokenService = new LinkedInTokenService();
 
 // Initialize OAuth provider
 const oauthProvider = new OAuthServerProvider({
@@ -158,7 +160,7 @@ app.get('/health', (req, res) => {
 // Register ping tool for token validation
 server.tool(
     "ping",
-    "Ping the server to validate authentication",
+    "Ping the server to validate authentication and LinkedIn connectivity",
     {},
     async (_params, { sessionId }) => {
         if (!sessionId) {
@@ -170,10 +172,119 @@ server.tool(
             throw new Error("Invalid session or missing authentication");
         }
 
-        return {
-            content: [{ type: "text", text: "pong" }],
-            isError: false
-        };
+        // Check if LinkedIn tokens are available and valid
+        try {
+            const authInfo = transport.auth;
+            const mcpTokenId = (authInfo as any).jti;
+
+            console.log("🔍 Ping: Starting LinkedIn validation for MCP token:", mcpTokenId);
+            console.log("🔍 Ping: Auth info structure:", {
+                hasExtra: !!(authInfo as any).extra,
+                extraKeys: (authInfo as any).extra ? Object.keys((authInfo as any).extra) : [],
+                hasLinkedinTokens: !!((authInfo as any).extra?.linkedinTokens),
+                linkedinTokensKeys: (authInfo as any).extra?.linkedinTokens ? Object.keys((authInfo as any).extra.linkedinTokens) : [],
+                linkedinTokensNull: (authInfo as any).extra?.linkedinTokens === null,
+                mcpTokenId: mcpTokenId
+            });
+
+            const linkedinTokens = (authInfo as any).extra?.linkedinTokens;
+
+            if (!linkedinTokens || linkedinTokens === null) {
+                console.log("❌ Ping: No LinkedIn tokens found in auth info, attempting direct database lookup...");
+
+                // Try to fetch tokens directly from database
+                try {
+                    const directTokens = await linkedinTokenService.getLinkedInTokens(mcpTokenId);
+                    if (directTokens && directTokens.access_token) {
+                        console.log("✅ Ping: Found LinkedIn tokens in database, testing API call...");
+
+                        // Test the LinkedIn API with the tokens from database
+                        const response = await fetch('https://api.linkedin.com/v2/userinfo', {
+                            headers: {
+                                'Authorization': `Bearer ${directTokens.access_token}`,
+                                'Content-Type': 'application/json'
+                            }
+                        });
+
+                        if (!response.ok) {
+                            console.log(`❌ Ping: LinkedIn API call failed with status ${response.status}`);
+                            const errorText = await response.text();
+                            console.log(`❌ Ping: LinkedIn API error response: ${errorText}`);
+                            return {
+                                content: [{ type: "text", text: "pong - LinkedIn token expired or invalid" }],
+                                isError: true,
+                                linkedinConnected: false
+                            };
+                        }
+
+                        console.log("✅ Ping: LinkedIn API call successful with database tokens");
+                        return {
+                            content: [{ type: "text", text: "pong - fully connected (via database)" }],
+                            isError: false,
+                            linkedinConnected: true
+                        };
+                    } else {
+                        console.log("❌ Ping: No LinkedIn tokens found in database either");
+                        return {
+                            content: [{ type: "text", text: "pong - MCP token valid but LinkedIn not connected" }],
+                            isError: true,
+                            linkedinConnected: false
+                        };
+                    }
+                } catch (dbError) {
+                    console.error("❌ Ping: Error fetching tokens from database:", dbError);
+                    return {
+                        content: [{ type: "text", text: "pong - database error during LinkedIn check" }],
+                        isError: true,
+                        linkedinConnected: false
+                    };
+                }
+            }
+
+            if (!linkedinTokens.access_token) {
+                console.log("❌ Ping: LinkedIn tokens found but no access_token");
+                return {
+                    content: [{ type: "text", text: "pong - LinkedIn tokens incomplete" }],
+                    isError: true,
+                    linkedinConnected: false
+                };
+            }
+
+            console.log("🔍 Ping: Testing LinkedIn API with cached tokens...");
+            // Verify LinkedIn token is still valid by making a simple API call
+            // Use /v2/userinfo which works with openid scope (which we have)
+            const response = await fetch('https://api.linkedin.com/v2/userinfo', {
+                headers: {
+                    'Authorization': `Bearer ${linkedinTokens.access_token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                console.log(`❌ Ping: LinkedIn token validation failed with status ${response.status}`);
+                const errorText = await response.text();
+                console.log(`❌ Ping: LinkedIn API error response: ${errorText}`);
+                return {
+                    content: [{ type: "text", text: "pong - MCP token valid but LinkedIn token expired" }],
+                    isError: true,
+                    linkedinConnected: false
+                };
+            }
+
+            console.log("✅ Ping: Both MCP and LinkedIn tokens are valid");
+            return {
+                content: [{ type: "text", text: "pong - fully connected" }],
+                isError: false,
+                linkedinConnected: true
+            };
+        } catch (error) {
+            console.error("❌ Ping: Error checking LinkedIn connectivity:", error);
+            return {
+                content: [{ type: "text", text: "pong - MCP token valid but LinkedIn check failed" }],
+                isError: true,
+                linkedinConnected: false
+            };
+        }
     }
 );
 
@@ -637,7 +748,7 @@ app.post("/mcp", async (req, res) => {
             if (requestUserId && authInfo.jti) {
                 try {
                     // Get user ID from LinkedIn connection
-                    const { data: connection } = await supabase
+                    const { data: connection } = await linkedinTokenService.supabase
                         .from('linkedin_connections')
                         .select('user_id')
                         .eq('mcp_token_id', authInfo.jti)

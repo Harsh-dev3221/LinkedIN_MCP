@@ -74,7 +74,11 @@ export class TokensStore {
                 expires_in: expiresInSeconds,
                 scope: session.params.scopes?.join(" "),
             },
-            linkedinTokens: { ...linkedinTokens, token_type: "Bearer" },
+            linkedinTokens: {
+                ...linkedinTokens,
+                token_type: "Bearer",
+                scope: session.params.scopes?.join(" ") // ✅ FIX: Include scope in LinkedIn tokens too
+            },
         };
 
         // Store LinkedIn tokens in Supabase for persistence
@@ -112,10 +116,17 @@ export class TokensStore {
             const payload = this.parseAccessToken(accessToken);
             const mcpTokenId = payload.jti;
 
+            console.log(`🔍 TokenStore: Verifying access token for MCP token: ${mcpTokenId}`);
+
             // First check in-memory storage
             const memoryTokens = this._tokensById[mcpTokenId];
             if (memoryTokens) {
-                console.log(`Found tokens in memory for MCP token: ${mcpTokenId}`);
+                console.log(`✅ TokenStore: Found tokens in memory for MCP token: ${mcpTokenId}`);
+                console.log(`🔍 TokenStore: Memory tokens structure:`, {
+                    hasLinkedinTokens: !!memoryTokens.linkedinTokens,
+                    hasAccessToken: !!(memoryTokens.linkedinTokens?.access_token),
+                    tokenLength: memoryTokens.linkedinTokens?.access_token?.length || 0
+                });
                 return {
                     token: accessToken,
                     extra: { linkedinTokens: memoryTokens.linkedinTokens }
@@ -123,11 +134,17 @@ export class TokensStore {
             }
 
             // If not in memory, fetch from Supabase
-            console.log(`Fetching LinkedIn tokens from Supabase for MCP token: ${mcpTokenId}`);
+            console.log(`🔍 TokenStore: No memory tokens found, fetching from Supabase for MCP token: ${mcpTokenId}`);
             const linkedinTokens = await this._linkedInTokenService.getLinkedInTokens(mcpTokenId);
 
             if (linkedinTokens) {
-                console.log(`Found LinkedIn tokens in Supabase for MCP token: ${mcpTokenId}`);
+                console.log(`✅ TokenStore: Found LinkedIn tokens in Supabase for MCP token: ${mcpTokenId}`);
+                console.log(`🔍 TokenStore: Supabase tokens structure:`, {
+                    hasAccessToken: !!linkedinTokens.access_token,
+                    hasRefreshToken: !!linkedinTokens.refresh_token,
+                    tokenLength: linkedinTokens.access_token?.length || 0,
+                    expiresAt: linkedinTokens.expires_at
+                });
 
                 // Reconstruct the tokens object for compatibility
                 const reconstructedTokens = {
@@ -139,26 +156,28 @@ export class TokensStore {
                     linkedinTokens: {
                         access_token: linkedinTokens.access_token,
                         refresh_token: linkedinTokens.refresh_token,
-                        token_type: "Bearer"
+                        token_type: "Bearer",
+                        scope: payload.scopes?.join(" ") || "" // ✅ FIX: Include scope information
                     }
                 };
 
                 // Store back in memory for faster access
                 this._tokensById[mcpTokenId] = reconstructedTokens;
+                console.log(`✅ TokenStore: Cached tokens in memory for MCP token: ${mcpTokenId}`);
 
                 return {
                     token: accessToken,
                     extra: { linkedinTokens: reconstructedTokens.linkedinTokens }
                 };
             } else {
-                console.log(`No LinkedIn tokens found for MCP token: ${mcpTokenId}`);
+                console.log(`❌ TokenStore: No LinkedIn tokens found in Supabase for MCP token: ${mcpTokenId}`);
                 return {
                     token: accessToken,
                     extra: { linkedinTokens: null }
                 };
             }
         } catch (error) {
-            console.error('Error verifying access token:', error);
+            console.error('❌ TokenStore: Error verifying access token:', error);
             throw error;
         }
     };

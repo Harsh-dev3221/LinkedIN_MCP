@@ -8,6 +8,7 @@ interface AuthContextType {
     session: Session | null;
     tokenStatus: TokenStatus | null;
     linkedinConnected: boolean;
+    linkedinStatusLoading: boolean;
     mcpToken: string | null;
     loading: boolean;
     signInWithGoogle: () => Promise<void>;
@@ -48,6 +49,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [tokenStatus, setTokenStatus] = useState<TokenStatus | null>(null);
     const [linkedinConnected, setLinkedinConnected] = useState(false);
+    const [linkedinStatusLoading, setLinkedinStatusLoading] = useState(false);
     const [mcpToken, setMcpToken] = useState<string | null>(() => {
         // SECURITY: Get token from localStorage but will validate ownership later
         return localStorage.getItem('mcp_token');
@@ -289,7 +291,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                             }),
                             signal: AbortSignal.timeout(10000)
                         });
-                        const isValid = response.ok && !(await response.json()).isError;
+                        const responseData = await response.json();
+                        const isValid = response.ok && !responseData.isError && responseData.linkedinConnected;
                         setLinkedinConnected(isValid);
                     } catch (error) {
                         setLinkedinConnected(false);
@@ -329,10 +332,134 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         }
     }, [API_BASE_URL]);
 
+    // Validate MCP token with caching and ownership verification
+    const validateMcpToken = useCallback(async (token: string, forceValidation = false): Promise<boolean> => {
+        // Check cache first (but only if not forcing validation)
+        if (!forceValidation) {
+            const cache = tokenValidationCacheRef.current;
+            const now = Date.now();
+
+            if (cache.token === token && (now - cache.timestamp) < TOKEN_VALIDATION_CACHE_DURATION) {
+                console.log('🔒 Using cached token validation result');
+                return cache.isValid;
+            }
+        }
+
+        try {
+            console.log(`🔍 Validating MCP token...`);
+
+            // Prepare headers and body - include user info if available for security
+            const headers: Record<string, string> = {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
+
+            const requestBody: any = {
+                type: "call-tool",
+                tool: "ping",
+                params: {}
+            };
+
+            // SECURITY: Include user ID if available for backend verification
+            if (user) {
+                headers['X-User-ID'] = user.id;
+                requestBody.params.userId = user.id;
+                console.log(`🔍 SECURITY: Including user ID for validation: ${user.email}`);
+            } else {
+                console.log('🔍 Validating token without user context (during OAuth flow)');
+            }
+
+            const response = await fetch(`${API_BASE_URL}/mcp`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestBody),
+                signal: AbortSignal.timeout(10000)
+            });
+
+            const responseData = await response.json();
+            console.log('🔍 Full response data:', JSON.stringify(responseData, null, 2));
+            console.log('🔍 Response structure check:', {
+                responseOk: response.ok,
+                hasIsError: 'isError' in responseData,
+                isError: responseData.isError,
+                hasLinkedinConnected: 'linkedinConnected' in responseData,
+                linkedinConnected: responseData.linkedinConnected,
+                responseKeys: Object.keys(responseData)
+            });
+            const isValid = response.ok && !responseData.isError && responseData.linkedinConnected;
+
+            // SECURITY: Additional check for token ownership (only if user is available)
+            if (user && response.ok && !responseData.isError && responseData.userId && responseData.userId !== user.id) {
+                console.error('🚨 SECURITY VIOLATION: Token belongs to different user!');
+                console.error(`Expected user: ${user.id}, Token user: ${responseData.userId}`);
+                setMcpToken(null);
+                localStorage.removeItem('mcp_token');
+                setLinkedinConnected(false);
+                return false;
+            }
+
+            // Cache the result
+            tokenValidationCacheRef.current = {
+                token,
+                isValid,
+                timestamp: Date.now()
+            };
+
+            if (!isValid && (response.status === 401 || response.status === 403)) {
+                console.log('🔒 Clearing invalid/unauthorized token');
+                setMcpToken(null);
+                localStorage.removeItem('mcp_token');
+                setLinkedinConnected(false);
+            }
+
+            console.log(`🔒 Token validation result: ${isValid ? 'VALID' : 'INVALID'}`);
+            return isValid;
+        } catch (error) {
+            console.error('🔒 Token validation failed:', error);
+            // Cache negative result
+            tokenValidationCacheRef.current = {
+                token,
+                isValid: false,
+                timestamp: Date.now()
+            };
+            return false;
+        }
+    }, [API_BASE_URL, user]);
+
+    // Validate MCP token with retry mechanism for better reliability
+    const validateMcpTokenWithRetry = useCallback(async (token: string, maxRetries: number = 3): Promise<boolean> => {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                console.log(`🔄 Attempt ${attempt}/${maxRetries}: Validating MCP token...`);
+                const isValid = await validateMcpToken(token, true);
+
+                if (isValid) {
+                    console.log(`✅ Token validation successful on attempt ${attempt}`);
+                    return true;
+                }
+
+                if (attempt < maxRetries) {
+                    console.log(`⏳ Attempt ${attempt} failed, waiting before retry...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+                }
+            } catch (error) {
+                console.error(`❌ Attempt ${attempt} failed with error:`, error);
+                if (attempt < maxRetries) {
+                    console.log(`⏳ Waiting before retry attempt ${attempt + 1}...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+                }
+            }
+        }
+
+        console.error(`❌ All ${maxRetries} validation attempts failed`);
+        return false;
+    }, [validateMcpToken]);
+
     // Check LinkedIn connection status - only validates when needed
     const checkLinkedInStatus = useCallback(async () => {
         if (!mcpToken) {
             setLinkedinConnected(false);
+            setLinkedinStatusLoading(false);
             return;
         }
 
@@ -343,6 +470,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         try {
             linkedinValidationRef.current = true;
+            setLinkedinStatusLoading(true);
             setAuthState(AuthState.CHECKING_LINKEDIN);
 
             const isValid = await validateMcpToken(mcpToken);
@@ -355,9 +483,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             console.error('Error checking LinkedIn status:', error);
             setLinkedinConnected(false);
         } finally {
+            setLinkedinStatusLoading(false);
             linkedinValidationRef.current = false;
         }
-    }, [mcpToken]);
+    }, [mcpToken, validateMcpToken]);
 
     // Effect to validate LinkedIn connection when mcpToken changes
     useEffect(() => {
@@ -369,87 +498,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setLinkedinConnected(false);
         }
     }, [mcpToken, checkLinkedInStatus]);
-
-    // Validate MCP token with caching and ownership verification
-    const validateMcpToken = useCallback(async (token: string, forceValidation = false): Promise<boolean> => {
-        // SECURITY: Always validate token ownership for current user
-        if (!user) {
-            console.warn('🔒 SECURITY: Cannot validate token without authenticated user');
-            return false;
-        }
-
-        // Check cache first (but only if not forcing validation)
-        if (!forceValidation) {
-            const cache = tokenValidationCacheRef.current;
-            const now = Date.now();
-
-            // SECURITY: Ensure cached token belongs to current user
-            if (cache.token === token && (now - cache.timestamp) < TOKEN_VALIDATION_CACHE_DURATION) {
-                console.log('🔒 Using cached token validation result');
-                return cache.isValid;
-            }
-        }
-
-        try {
-            console.log(`🔍 SECURITY: Validating token ownership for user: ${user.email}`);
-
-            const response = await fetch(`${API_BASE_URL}/mcp`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json',
-                    'X-User-ID': user.id // SECURITY: Include user ID for backend verification
-                },
-                body: JSON.stringify({
-                    type: "call-tool",
-                    tool: "ping",
-                    params: { userId: user.id } // SECURITY: Include user ID in request
-                }),
-                signal: AbortSignal.timeout(10000)
-            });
-
-            const responseData = await response.json();
-            const isValid = response.ok && !responseData.isError;
-
-            // SECURITY: Additional check for token ownership
-            if (isValid && responseData.userId && responseData.userId !== user.id) {
-                console.error('🚨 SECURITY VIOLATION: Token belongs to different user!');
-                console.error(`Expected user: ${user.id}, Token user: ${responseData.userId}`);
-                setMcpToken(null);
-                localStorage.removeItem('mcp_token');
-                setLinkedinConnected(false);
-                return false;
-            }
-
-            // Cache the result with user context
-            tokenValidationCacheRef.current = {
-                token,
-                isValid,
-                timestamp: Date.now()
-            };
-
-            if (!isValid && (response.status === 401 || response.status === 403)) {
-                console.log('🔒 SECURITY: Clearing invalid/unauthorized token');
-                setMcpToken(null);
-                localStorage.removeItem('mcp_token');
-                setLinkedinConnected(false);
-            }
-
-            console.log(`🔒 SECURITY: Token validation result: ${isValid ? 'VALID' : 'INVALID'}`);
-            return isValid;
-        } catch (error) {
-            console.error('🔒 SECURITY: Token validation failed:', error);
-            // Cache negative result
-            tokenValidationCacheRef.current = {
-                token,
-                isValid: false,
-                timestamp: Date.now()
-            };
-            return false;
-        }
-    }, [API_BASE_URL, user]);
-
-
 
     // Google OAuth sign in
     const signInWithGoogle = useCallback(async () => {
@@ -572,12 +620,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             localStorage.setItem('mcp_token', data.access_token);
             console.log('🔑 MCP token stored successfully');
 
-            // Validate the token immediately and set connection status
-            console.log('🔍 Validating LinkedIn connection...');
-            const isValid = await validateMcpToken(data.access_token, true);
+            // Set loading state to indicate validation is in progress
+            setLinkedinStatusLoading(true);
+
+            // Add a small delay to ensure database consistency before validation
+            console.log('⏳ Waiting for database consistency...');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
+            // Validate the token with retry mechanism
+            console.log('🔍 Validating LinkedIn connection with retry...');
+            const isValid = await validateMcpTokenWithRetry(data.access_token, 3);
 
             // CRITICAL: Set the connection status immediately and synchronously
             setLinkedinConnected(isValid);
+            setLinkedinStatusLoading(false);
 
             // Force a state update to ensure UI components get the latest state
             if (isValid) {
@@ -589,7 +645,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     timestamp: Date.now()
                 };
             } else {
-                console.warn('⚠️ LinkedIn connection validation failed');
+                console.warn('⚠️ LinkedIn connection validation failed after retries');
                 // Clear invalid token
                 setMcpToken(null);
                 localStorage.removeItem('mcp_token');
@@ -619,15 +675,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Manually refresh LinkedIn connection status (forces validation)
     const refreshLinkedInStatus = useCallback(async () => {
         console.log('🔄 Manually refreshing LinkedIn connection status...');
-        if (mcpToken) {
-            const isValid = await validateMcpToken(mcpToken, true); // Force validation
-            setLinkedinConnected(isValid);
-            console.log(`🔗 LinkedIn connection status updated: ${isValid ? 'Connected' : 'Disconnected'}`);
-        } else {
-            setLinkedinConnected(false);
-            console.log('🔗 LinkedIn connection status updated: Disconnected (no token)');
+        setLinkedinStatusLoading(true);
+        try {
+            if (mcpToken) {
+                const isValid = await validateMcpTokenWithRetry(mcpToken, 2); // Use retry with 2 attempts
+                setLinkedinConnected(isValid);
+                console.log(`🔗 LinkedIn connection status updated: ${isValid ? 'Connected' : 'Disconnected'}`);
+            } else {
+                setLinkedinConnected(false);
+                console.log('🔗 LinkedIn connection status updated: Disconnected (no token)');
+            }
+        } finally {
+            setLinkedinStatusLoading(false);
         }
-    }, [mcpToken, validateMcpToken]);
+    }, [mcpToken, validateMcpTokenWithRetry]);
 
     // Refresh MCP token by re-authenticating with LinkedIn
     const refreshMcpToken = useCallback(async (): Promise<boolean> => {
@@ -688,6 +749,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         session,
         tokenStatus,
         linkedinConnected,
+        linkedinStatusLoading,
         mcpToken,
         loading,
         signInWithGoogle,

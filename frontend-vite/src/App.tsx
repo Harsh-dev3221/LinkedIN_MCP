@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 
@@ -201,13 +200,7 @@ const theme = createTheme({
 
 // Main content component that has access to routing
 function AppContent() {
-  const [showLanding, setShowLanding] = useState(true);
   const navigate = useNavigate();
-
-  // Start the app flow
-  const handleGetStarted = () => {
-    setShowLanding(false);
-  };
 
   const handleCreatePost = () => {
     navigate('/create');
@@ -219,11 +212,7 @@ function AppContent() {
       <Routes>
         <Route
           path="/"
-          element={
-            showLanding ?
-              <LandingPage onGetStarted={handleGetStarted} /> :
-              <Navigate to="/auth" replace />
-          }
+          element={<LandingPage />}
         />
         <Route path="/auth" element={<AuthPage />} />
         <Route path="/auth/callback" element={<AuthCallback />} />

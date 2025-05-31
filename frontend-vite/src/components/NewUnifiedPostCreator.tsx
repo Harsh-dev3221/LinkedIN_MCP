@@ -78,7 +78,7 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
 };
 
 const NewUnifiedPostCreator = () => {
-    const { user, session, tokenStatus, refreshTokenStatus, mcpToken, linkedinConnected, refreshMcpToken, refreshLinkedInStatus } = useAuth();
+    const { user, session, tokenStatus, refreshTokenStatus, mcpToken, linkedinConnected, linkedinStatusLoading, refreshMcpToken, refreshLinkedInStatus } = useAuth();
     const navigate = useNavigate();
 
     // UI State
@@ -487,6 +487,18 @@ const NewUnifiedPostCreator = () => {
                         onSuccess={handleSuccess}
                         onTokenExpired={handleTokenExpired}
                     />
+                ) : linkedinStatusLoading ? (
+                    <Card sx={{ p: 3, borderRadius: 4, background: 'rgba(255, 255, 255, 0.7)', backdropFilter: 'blur(10px)' }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                            <CircularProgress size={40} />
+                            <Typography variant="h6" sx={{ textAlign: 'center', color: 'primary.main' }}>
+                                Checking LinkedIn Connection...
+                            </Typography>
+                            <Typography variant="body2" sx={{ textAlign: 'center', color: 'text.secondary' }}>
+                                Please wait while we verify your LinkedIn connection status.
+                            </Typography>
+                        </Box>
+                    </Card>
                 ) : (
                     <Card sx={{ p: 3, borderRadius: 4, background: 'rgba(255, 255, 255, 0.7)', backdropFilter: 'blur(10px)' }}>
                         <Typography variant="h6" gutterBottom sx={{ textAlign: 'center', color: 'warning.main' }}>

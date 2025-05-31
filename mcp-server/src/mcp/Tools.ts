@@ -23,7 +23,7 @@ interface OAuthTokens {
 
 export class Tools {
     // LinkedIn API version to use for all requests - updated to latest based on deprecation timeline
-    private readonly LINKEDIN_API_VERSION = '202504'; // Most current version as of May 2025
+    private readonly LINKEDIN_API_VERSION = '202505'; // Most current version as of May 2025
     private readonly LINKEDIN_PROTOCOL_VERSION = '2.0.0';
 
     // Define field projections to match permission scopes
@@ -77,16 +77,26 @@ export class Tools {
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
-            // Check if we're using OpenID Connect (scope contains "openid")
-            const isOpenIDConnect = linkedinTokens.scope && linkedinTokens.scope.includes('openid');
+            // Enhanced scope detection for OpenID Connect (same logic as getUserId)
+            console.log('🔍 getUserInfo - Token scope analysis:', {
+                scope: linkedinTokens.scope,
+                scopeType: typeof linkedinTokens.scope
+            });
+
+            const scopeString = Array.isArray(linkedinTokens.scope)
+                ? linkedinTokens.scope.join(' ')
+                : (linkedinTokens.scope || '');
+
+            const isOpenIDConnect = scopeString.includes('openid') || scopeString.includes('profile');
             let userData;
 
             if (isOpenIDConnect) {
-                console.log('Using OpenID Connect userinfo endpoint for profile information');
+                console.log('✅ Using OpenID Connect userinfo endpoint for profile information');
                 userData = await this.getUserInfoWithOpenID(linkedinTokens.access_token);
             } else {
+                console.log('⚠️ Using traditional LinkedIn /v2/me endpoint for profile information');
                 // Verify scope information if available
-                if (linkedinTokens.scope && !linkedinTokens.scope.includes('r_liteprofile')) {
+                if (linkedinTokens.scope && !scopeString.includes('r_liteprofile')) {
                     console.warn('Warning: r_liteprofile scope not granted. Profile API calls may fail.');
                 }
 
@@ -391,13 +401,39 @@ export class Tools {
      */
     private getUserId = async (linkedinTokens: OAuthTokens): Promise<string> => {
         try {
-            // Check if we're using OpenID Connect
-            const isOpenIDConnect = linkedinTokens.scope && linkedinTokens.scope.includes('openid');
+            // Enhanced scope detection for OpenID Connect
+            console.log('🔍 getUserId - Token scope analysis:', {
+                scope: linkedinTokens.scope,
+                scopeType: typeof linkedinTokens.scope,
+                hasOpenId: linkedinTokens.scope?.includes('openid'),
+                hasProfile: linkedinTokens.scope?.includes('profile'),
+                hasEmail: linkedinTokens.scope?.includes('email')
+            });
+
+            // Check if we're using OpenID Connect - be more flexible with scope detection
+            const scopeString = Array.isArray(linkedinTokens.scope)
+                ? linkedinTokens.scope.join(' ')
+                : (linkedinTokens.scope || '');
+
+            const isOpenIDConnect = scopeString.includes('openid') || scopeString.includes('profile');
+
+            console.log('🔍 OpenID Connect detection result:', {
+                isOpenIDConnect,
+                scopeString,
+                willUseUserInfo: isOpenIDConnect
+            });
 
             if (isOpenIDConnect) {
+                console.log('✅ Using OpenID Connect userinfo endpoint');
                 // For OpenID Connect, use the userinfo endpoint
                 const response = await axios.get('https://api.linkedin.com/v2/userinfo', {
                     headers: this.getOpenIDHeaders(linkedinTokens.access_token)
+                });
+
+                console.log('✅ OpenID userinfo response received:', {
+                    hasSub: !!response.data?.sub,
+                    hasName: !!response.data?.name,
+                    dataKeys: Object.keys(response.data || {})
                 });
 
                 if (!response.data || !response.data.sub) {
@@ -406,8 +442,9 @@ export class Tools {
 
                 return response.data.sub; // OpenID Connect uses 'sub' as the user identifier
             } else {
+                console.log('⚠️ Using traditional LinkedIn /v2/me endpoint');
                 // Check scope for traditional OAuth flow
-                if (linkedinTokens.scope && !linkedinTokens.scope.includes('r_liteprofile')) {
+                if (linkedinTokens.scope && !scopeString.includes('r_liteprofile')) {
                     console.warn('Warning: r_liteprofile scope not granted. Profile API calls may fail.');
                 }
 
@@ -613,9 +650,9 @@ export class Tools {
             // Updated prompt with enhanced instructions
             const improvedPrompt = `
     Analyze the provided image and the following instructions to create a highly professional LinkedIn post for ${userName}.
-    
+
     Instructions: ${prompt}
-    
+
     Guidelines for the LinkedIn post:
     1. **Tone**: Maintain a very professional tone throughout. Use formal language and avoid any casual or informal expressions.
     2. **Content Integration**: Thoroughly analyze both the image and the instructions to ensure the post is cohesive and directly relevant. The image and text should complement each other seamlessly.
@@ -624,7 +661,7 @@ export class Tools {
     5. **Call-to-Action**: Incorporate a clear and compelling call-to-action to encourage engagement, such as inviting comments or shares.
     6. **SEO Optimization**: Integrate keywords and phrases that professionals are likely to search for on LinkedIn when looking for content on this topic.
     7. **Formatting**: Use appropriate line breaks and keep paragraphs short for better readability.
-    
+
     Ensure that the generated post adheres strictly to these guidelines and does not include any additional commentary or explanations.
             `;
 
@@ -826,7 +863,7 @@ export class Tools {
                     // Use a simpler prompt for large images
                     const simplePrompt = imageSizeKB > 2000 ?
                         "Describe the main elements of this image briefly." :
-                        `Analyze this image in detail. Extract key information about: 
+                        `Analyze this image in detail. Extract key information about:
                         1. What's in the image (objects, people, scene, setting)
                         2. Key themes or messages conveyed
                         3. Professional context (business, tech, marketing, etc.)`;
@@ -868,7 +905,7 @@ export class Tools {
 
                         const contentPrompt = `
 Create a professional LinkedIn post that incorporates this user's draft text and information from the image analysis.
-                        
+
 User's draft text:
 ${userText}
 
@@ -1000,7 +1037,7 @@ Guidelines:
                     // Use a simpler prompt for large images
                     const simplePrompt = imageSizeKB > 2000 ?
                         "Describe the main elements of this image briefly." :
-                        `Analyze this image in detail. Extract key information about: 
+                        `Analyze this image in detail. Extract key information about:
                         1. What's in the image (objects, people, scene, setting)
                         2. Key themes or messages conveyed
                         3. Professional context (business, tech, marketing, etc.)`;
@@ -1043,7 +1080,7 @@ Guidelines:
                         // We'll use a simpler approach for the second API call to avoid more timeouts
                         const contentPrompt = `
 Create a professional LinkedIn post that incorporates this user's draft text and information from the image analysis.
-                        
+
 User's draft text:
 ${userText}
 
@@ -1831,4 +1868,4 @@ Format the post ready to publish, with hashtags at the end.
     }
 
     // Other tool methods can be added here as needed
-} 
+}

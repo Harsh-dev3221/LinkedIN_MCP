@@ -7,6 +7,7 @@ export interface AuthInfo {
     scopes?: string[];
     expiresAt?: number;
     extra?: any;
+    jti?: string; // JWT ID for token ownership verification
 }
 
 // Define SSEServerTransport class
@@ -41,4 +42,4 @@ export class TransportsStore {
 
         return transport;
     };
-} 
+}

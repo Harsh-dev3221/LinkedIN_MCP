@@ -348,7 +348,8 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
         console.log('🔍 OAuthServerProvider.verifyAccessToken result:', {
             hasExtra: !!tokenData.extra,
             hasLinkedInTokens: !!(tokenData.extra?.linkedinTokens),
-            linkedInTokensNull: tokenData.extra?.linkedinTokens === null
+            linkedInTokensNull: tokenData.extra?.linkedinTokens === null,
+            jti: jti
         });
 
         return {
@@ -357,6 +358,7 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
             scopes: scopes ?? [],
             expiresAt: exp,
             extra: tokenData.extra,
+            jti: jti // Include the JWT ID for token ownership verification
         };
     };
 

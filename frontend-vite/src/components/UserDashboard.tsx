@@ -1,27 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Box,
-    Card,
-    CardContent,
-    Typography,
-    Button,
-    Avatar,
-    Chip,
-    LinearProgress,
-    Stack,
-    IconButton,
-    Tooltip,
-    Container,
-    Grid,
-    Paper,
-} from '@mui/material';
-import LogoutIcon from '@mui/icons-material/Logout';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import TokenIcon from '@mui/icons-material/Token';
-import LinkedInIcon from '@mui/icons-material/LinkedIn';
-import LinkIcon from '@mui/icons-material/Link';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+    LogOut,
+    RefreshCw,
+    Coins,
+    Linkedin,
+    TrendingUp,
+    Sparkles,
+    CheckCircle
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 interface UserDashboardProps {
@@ -29,7 +15,7 @@ interface UserDashboardProps {
 }
 
 const UserDashboard: React.FC<UserDashboardProps> = ({ onCreatePost }) => {
-    const { user, tokenStatus, linkedinConnected, connectLinkedIn, signOut, refreshTokenStatus, refreshLinkedInStatus } = useAuth();
+    const { user, tokenStatus, linkedinConnected, linkedinStatusLoading, connectLinkedIn, signOut, refreshTokenStatus, refreshLinkedInStatus } = useAuth();
     const [isRefreshingLinkedIn, setIsRefreshingLinkedIn] = useState(false);
 
     // Force refresh LinkedIn status when component mounts to ensure accurate state
@@ -65,13 +51,7 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onCreatePost }) => {
         }
     };
 
-    const getTokenProgressColor = () => {
-        if (!tokenStatus) return 'primary';
-        const percentage = (tokenStatus.tokens_remaining / tokenStatus.daily_tokens) * 100;
-        if (percentage > 50) return 'success';
-        if (percentage > 20) return 'warning';
-        return 'error';
-    };
+
 
     const getProviderColor = (provider: string) => {
         switch (provider) {
@@ -85,331 +65,287 @@ const UserDashboard: React.FC<UserDashboardProps> = ({ onCreatePost }) => {
     };
 
     return (
-        <Box sx={{
-            minHeight: '100vh',
-            py: 4,
-            background: 'transparent',
-        }}>
-            <Container maxWidth="lg">
+        <div className="min-h-screen py-8 bg-gradient-to-br from-beige-50 via-white to-linkedin-50/30 relative">
+            {/* Background Elements */}
+            <div className="absolute top-20 left-10 w-72 h-72 bg-linkedin-100/20 rounded-full blur-3xl"></div>
+            <div className="absolute bottom-20 right-10 w-96 h-96 bg-orange-100/20 rounded-full blur-3xl"></div>
+
+            <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
                 {/* Welcome Header */}
-                <Box sx={{ mb: 4, textAlign: 'center' }}>
-                    <Typography variant="h2" component="h1" gutterBottom sx={{
+                <div className="text-center mb-12">
+                    <h1 className="text-4xl lg:text-5xl font-bold mb-4" style={{
                         background: 'linear-gradient(135deg, #0A66C2 0%, #F5A623 100%)',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent',
-                        backgroundClip: 'text',
-                        mb: 1,
+                        backgroundClip: 'text'
                     }}>
                         Welcome back, {user?.name?.split(' ')[0] || 'Creator'}
-                    </Typography>
-                    <Typography variant="body1" color="text.secondary" sx={{ fontSize: '1.1rem' }}>
+                    </h1>
+                    <p className="text-xl text-gray-600 leading-relaxed">
                         Ready to create engaging LinkedIn content?
-                    </Typography>
-                </Box>
+                    </p>
+                </div>
 
-                <Grid container spacing={3}>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                     {/* User Profile Card */}
-                    <Grid size={{ xs: 12, md: 4 }}>
-                        <Card sx={{ height: 'fit-content' }}>
-                            <CardContent sx={{ p: 3 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                        <Avatar
-                                            src={user?.avatar_url}
-                                            sx={{
-                                                width: 64,
-                                                height: 64,
-                                                border: '3px solid',
-                                                borderColor: 'primary.main',
-                                            }}
-                                        >
-                                            {user?.name?.charAt(0) || user?.email?.charAt(0)}
-                                        </Avatar>
-                                        <Box>
-                                            <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
-                                                {user?.name || 'User'}
-                                            </Typography>
-                                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                                {user?.email}
-                                            </Typography>
-                                            <Chip
-                                                label={user?.provider}
-                                                size="small"
-                                                sx={{
-                                                    backgroundColor: getProviderColor(user?.provider || ''),
-                                                    color: 'white',
-                                                    textTransform: 'capitalize',
-                                                    fontWeight: 500,
-                                                }}
+                    <div className="lg:col-span-4">
+                        <div className="h-fit bg-white/95 backdrop-blur-xl border-2 border-white/60 rounded-3xl shadow-soft-lg hover:shadow-soft-lg transition-all duration-300 hover:-translate-y-1">
+                            <div className="p-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center space-x-4">
+                                        {user?.avatar_url ? (
+                                            <img
+                                                src={user.avatar_url}
+                                                alt={user.name || 'User'}
+                                                className="w-16 h-16 rounded-2xl border-3 border-linkedin-500 object-cover"
                                             />
-                                        </Box>
-                                    </Box>
-                                    <Tooltip title="Sign out">
-                                        <IconButton
-                                            onClick={handleSignOut}
-                                            sx={{
-                                                color: 'error.main',
-                                                '&:hover': { backgroundColor: 'error.light', color: 'white' }
-                                            }}
-                                        >
-                                            <LogoutIcon />
-                                        </IconButton>
-                                    </Tooltip>
-                                </Box>
-                            </CardContent>
-                        </Card>
-                    </Grid>
+                                        ) : (
+                                            <div className="w-16 h-16 rounded-2xl border-3 border-linkedin-500 bg-gradient-to-br from-linkedin-500 to-linkedin-600 flex items-center justify-center text-white font-bold text-xl">
+                                                {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+                                            </div>
+                                        )}
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                                                {user?.name || 'User'}
+                                            </h3>
+                                            <p className="text-sm text-gray-600 mb-2">
+                                                {user?.email}
+                                            </p>
+                                            <span
+                                                className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium text-white capitalize"
+                                                style={{ backgroundColor: getProviderColor(user?.provider || '') }}
+                                            >
+                                                {user?.provider}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleSignOut}
+                                        className="p-2 text-red-500 hover:text-white hover:bg-red-500 rounded-xl transition-all duration-300 group"
+                                        title="Sign out"
+                                    >
+                                        <LogOut className="w-5 h-5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Token Status Card */}
-                    <Grid size={{ xs: 12, md: 8 }}>
-                        <Card>
-                            <CardContent sx={{ p: 3 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                        <Box sx={{
-                                            p: 1.5,
-                                            borderRadius: 2,
-                                            backgroundColor: 'primary.main',
-                                            color: 'white',
-                                        }}>
-                                            <TokenIcon />
-                                        </Box>
-                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    <div className="lg:col-span-8">
+                        <div className="bg-white/95 backdrop-blur-xl border-2 border-white/60 rounded-3xl shadow-soft-lg hover:shadow-soft-lg transition-all duration-300 hover:-translate-y-1">
+                            <div className="p-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center space-x-4">
+                                        <div className="p-3 bg-gradient-to-br from-linkedin-500 to-linkedin-600 rounded-2xl shadow-linkedin">
+                                            <Coins className="w-6 h-6 text-white" />
+                                        </div>
+                                        <h3 className="text-xl font-semibold text-gray-900">
                                             Daily Tokens
-                                        </Typography>
-                                    </Box>
-                                    <Tooltip title="Refresh token status">
-                                        <IconButton onClick={handleRefreshTokens} size="small">
-                                            <RefreshIcon />
-                                        </IconButton>
-                                    </Tooltip>
-                                </Box>
+                                        </h3>
+                                    </div>
+                                    <button
+                                        onClick={handleRefreshTokens}
+                                        className="p-2 text-gray-500 hover:text-linkedin-600 hover:bg-linkedin-50 rounded-xl transition-all duration-300"
+                                        title="Refresh token status"
+                                    >
+                                        <RefreshCw className="w-5 h-5" />
+                                    </button>
+                                </div>
 
                                 {tokenStatus ? (
                                     <>
-                                        <Grid container spacing={3} sx={{ mb: 3 }}>
-                                            <Grid size={4}>
-                                                <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: 'grey.50' }}>
-                                                    <Typography variant="h4" sx={{ fontWeight: 700, color: 'success.main' }}>
-                                                        {tokenStatus.tokens_remaining}
-                                                    </Typography>
-                                                    <Typography variant="body2" color="text.secondary">
-                                                        Remaining
-                                                    </Typography>
-                                                </Paper>
-                                            </Grid>
-                                            <Grid size={4}>
-                                                <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: 'grey.50' }}>
-                                                    <Typography variant="h4" sx={{ fontWeight: 700, color: 'warning.main' }}>
-                                                        {tokenStatus.tokens_used_today}
-                                                    </Typography>
-                                                    <Typography variant="body2" color="text.secondary">
-                                                        Used Today
-                                                    </Typography>
-                                                </Paper>
-                                            </Grid>
-                                            <Grid size={4}>
-                                                <Paper sx={{ p: 2, textAlign: 'center', backgroundColor: 'grey.50' }}>
-                                                    <Typography variant="h4" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                                                        {tokenStatus.daily_tokens}
-                                                    </Typography>
-                                                    <Typography variant="body2" color="text.secondary">
-                                                        Daily Limit
-                                                    </Typography>
-                                                </Paper>
-                                            </Grid>
-                                        </Grid>
+                                        <div className="grid grid-cols-3 gap-4 mb-6">
+                                            <div className="p-4 text-center bg-gray-50 rounded-2xl border border-gray-100">
+                                                <div className="text-3xl font-bold text-green-600 mb-1">
+                                                    {tokenStatus.tokens_remaining}
+                                                </div>
+                                                <div className="text-sm text-gray-600">
+                                                    Remaining
+                                                </div>
+                                            </div>
+                                            <div className="p-4 text-center bg-gray-50 rounded-2xl border border-gray-100">
+                                                <div className="text-3xl font-bold text-orange-500 mb-1">
+                                                    {tokenStatus.tokens_used_today}
+                                                </div>
+                                                <div className="text-sm text-gray-600">
+                                                    Used Today
+                                                </div>
+                                            </div>
+                                            <div className="p-4 text-center bg-gray-50 rounded-2xl border border-gray-100">
+                                                <div className="text-3xl font-bold text-linkedin-600 mb-1">
+                                                    {tokenStatus.daily_tokens}
+                                                </div>
+                                                <div className="text-sm text-gray-600">
+                                                    Daily Limit
+                                                </div>
+                                            </div>
+                                        </div>
 
-                                        <LinearProgress
-                                            variant="determinate"
-                                            value={(tokenStatus.tokens_remaining / tokenStatus.daily_tokens) * 100}
-                                            color={getTokenProgressColor()}
-                                            sx={{ height: 12, borderRadius: 6, mb: 2 }}
-                                        />
-                                        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+                                        <div className="mb-4">
+                                            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                                                <div
+                                                    className={`h-full rounded-full transition-all duration-500 ${(tokenStatus.tokens_remaining / tokenStatus.daily_tokens) * 100 > 50
+                                                        ? 'bg-gradient-to-r from-green-500 to-green-600'
+                                                        : (tokenStatus.tokens_remaining / tokenStatus.daily_tokens) * 100 > 20
+                                                            ? 'bg-gradient-to-r from-orange-500 to-orange-600'
+                                                            : 'bg-gradient-to-r from-red-500 to-red-600'
+                                                        }`}
+                                                    style={{
+                                                        width: `${(tokenStatus.tokens_remaining / tokenStatus.daily_tokens) * 100}%`
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                        <p className="text-sm text-gray-600 text-center">
                                             Tokens refresh daily at midnight UTC
-                                        </Typography>
+                                        </p>
                                     </>
                                 ) : (
-                                    <Typography variant="body2" color="text.secondary">
+                                    <p className="text-gray-600">
                                         Loading token status...
-                                    </Typography>
+                                    </p>
                                 )}
-                            </CardContent>
-                        </Card>
-                    </Grid>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Token Usage Guide */}
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Card>
-                            <CardContent sx={{ p: 3 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-                                    <Box sx={{
-                                        p: 1.5,
-                                        borderRadius: 2,
-                                        backgroundColor: 'secondary.main',
-                                        color: 'white',
-                                    }}>
-                                        <TrendingUpIcon />
-                                    </Box>
-                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    <div className="lg:col-span-6">
+                        <div className="bg-white/95 backdrop-blur-xl border-2 border-white/60 rounded-3xl shadow-soft-lg hover:shadow-soft-lg transition-all duration-300 hover:-translate-y-1">
+                            <div className="p-6">
+                                <div className="flex items-center space-x-4 mb-6">
+                                    <div className="p-3 bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl shadow-orange">
+                                        <TrendingUp className="w-6 h-6 text-white" />
+                                    </div>
+                                    <h3 className="text-xl font-semibold text-gray-900">
                                         Token Usage Guide
-                                    </Typography>
-                                </Box>
-                                <Stack spacing={2}>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, backgroundColor: 'grey.50', borderRadius: 2 }}>
-                                        <Typography variant="body2" sx={{ fontWeight: 500 }}>Basic Post Generation</Typography>
-                                        <Chip label="FREE" color="success" size="small" sx={{ fontWeight: 600 }} />
-                                    </Box>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, backgroundColor: 'grey.50', borderRadius: 2 }}>
-                                        <Typography variant="body2" sx={{ fontWeight: 500 }}>AI-Enhanced Single Post</Typography>
-                                        <Chip label="5 tokens" color="primary" size="small" sx={{ fontWeight: 600 }} />
-                                    </Box>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', p: 2, backgroundColor: 'grey.50', borderRadius: 2 }}>
-                                        <Typography variant="body2" sx={{ fontWeight: 500 }}>Multi-Image Post Generation</Typography>
-                                        <Chip label="10 tokens" color="warning" size="small" sx={{ fontWeight: 600 }} />
-                                    </Box>
-                                </Stack>
-                            </CardContent>
-                        </Card>
-                    </Grid>
+                                    </h3>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <span className="font-medium text-gray-700">Basic Post Generation</span>
+                                        <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-lg">
+                                            FREE
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <span className="font-medium text-gray-700">AI-Enhanced Single Post</span>
+                                        <span className="px-3 py-1 bg-linkedin-100 text-linkedin-700 text-xs font-semibold rounded-lg">
+                                            5 tokens
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                        <span className="font-medium text-gray-700">Multi-Image Post Generation</span>
+                                        <span className="px-3 py-1 bg-orange-100 text-orange-700 text-xs font-semibold rounded-lg">
+                                            10 tokens
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* LinkedIn Connection Card */}
-                    <Grid size={{ xs: 12, md: 6 }}>
-                        <Card>
-                            <CardContent sx={{ p: 3 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                                        <Box sx={{
-                                            p: 1.5,
-                                            borderRadius: 2,
-                                            backgroundColor: '#0A66C2',
-                                            color: 'white',
-                                        }}>
-                                            <LinkedInIcon />
-                                        </Box>
-                                        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                    <div className="lg:col-span-6">
+                        <div className="bg-white/95 backdrop-blur-xl border-2 border-white/60 rounded-3xl shadow-soft-lg hover:shadow-soft-lg transition-all duration-300 hover:-translate-y-1">
+                            <div className="p-6">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div className="flex items-center space-x-4">
+                                        <div className="p-3 bg-linkedin-600 rounded-2xl shadow-linkedin">
+                                            <Linkedin className="w-6 h-6 text-white" />
+                                        </div>
+                                        <h3 className="text-xl font-semibold text-gray-900">
                                             LinkedIn Connection
-                                        </Typography>
-                                    </Box>
-                                    <Tooltip title="Refresh LinkedIn connection status">
-                                        <IconButton
-                                            onClick={handleRefreshLinkedIn}
-                                            size="small"
-                                            disabled={isRefreshingLinkedIn}
-                                        >
-                                            <RefreshIcon sx={{
-                                                animation: isRefreshingLinkedIn ? 'spin 1s linear infinite' : 'none',
-                                                '@keyframes spin': {
-                                                    '0%': { transform: 'rotate(0deg)' },
-                                                    '100%': { transform: 'rotate(360deg)' }
-                                                }
-                                            }} />
-                                        </IconButton>
-                                    </Tooltip>
-                                </Box>
+                                        </h3>
+                                    </div>
+                                    <button
+                                        onClick={handleRefreshLinkedIn}
+                                        disabled={isRefreshingLinkedIn}
+                                        className="p-2 text-gray-500 hover:text-linkedin-600 hover:bg-linkedin-50 rounded-xl transition-all duration-300 disabled:opacity-50"
+                                        title="Refresh LinkedIn connection status"
+                                    >
+                                        <RefreshCw className={`w-5 h-5 ${isRefreshingLinkedIn ? 'animate-spin' : ''}`} />
+                                    </button>
+                                </div>
 
-                                {linkedinConnected ? (
-                                    <Box sx={{ textAlign: 'center', py: 2 }}>
-                                        <Box sx={{
-                                            display: 'inline-flex',
-                                            alignItems: 'center',
-                                            gap: 1,
-                                            p: 2,
-                                            backgroundColor: 'success.light',
-                                            borderRadius: 2,
-                                            mb: 2,
-                                        }}>
-                                            <LinkIcon sx={{ color: 'success.main' }} />
-                                            <Typography variant="body1" sx={{ fontWeight: 600, color: 'success.main' }}>
+                                {linkedinStatusLoading ? (
+                                    <div className="text-center py-4">
+                                        <div className="inline-flex items-center space-x-2 p-3 bg-blue-100 border-2 border-blue-200 rounded-2xl mb-4">
+                                            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                            <span className="font-semibold text-blue-700">
+                                                Checking Connection...
+                                            </span>
+                                        </div>
+                                        <p className="text-gray-600">
+                                            Please wait while we verify your LinkedIn connection status
+                                        </p>
+                                    </div>
+                                ) : linkedinConnected ? (
+                                    <div className="text-center py-4">
+                                        <div className="inline-flex items-center space-x-2 p-3 bg-green-100 border-2 border-green-200 rounded-2xl mb-4">
+                                            <CheckCircle className="w-5 h-5 text-green-600" />
+                                            <span className="font-semibold text-green-700">
                                                 Connected & Ready
-                                            </Typography>
-                                        </Box>
-                                        <Typography variant="body2" color="text.secondary">
+                                            </span>
+                                        </div>
+                                        <p className="text-gray-600">
                                             Your LinkedIn account is connected and ready for posting
-                                        </Typography>
-                                    </Box>
+                                        </p>
+                                    </div>
                                 ) : (
-                                    <Box sx={{ textAlign: 'center', py: 2 }}>
-                                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                                    <div className="text-center py-4">
+                                        <p className="text-gray-600 mb-6">
                                             Connect your LinkedIn account to start creating and publishing posts
-                                        </Typography>
-                                        <Button
-                                            variant="outlined"
+                                        </p>
+                                        <button
                                             onClick={connectLinkedIn}
-                                            startIcon={<LinkedInIcon />}
-                                            sx={{
-                                                borderColor: '#0A66C2',
-                                                color: '#0A66C2',
-                                                fontWeight: 600,
-                                                '&:hover': {
-                                                    borderColor: '#004182',
-                                                    backgroundColor: 'rgba(10, 102, 194, 0.04)',
-                                                },
-                                            }}
+                                            className="inline-flex items-center space-x-2 px-6 py-3 border-2 border-linkedin-600 text-linkedin-600 font-semibold rounded-xl hover:bg-linkedin-600 hover:text-white transition-all duration-300 transform hover:-translate-y-1"
                                         >
-                                            Connect LinkedIn
-                                        </Button>
-                                    </Box>
+                                            <Linkedin className="w-5 h-5" />
+                                            <span>Connect LinkedIn</span>
+                                        </button>
+                                    </div>
                                 )}
-                            </CardContent>
-                        </Card>
-                    </Grid>
+                            </div>
+                        </div>
+                    </div>
 
                     {/* Create Post Button */}
-                    <Grid size={12}>
-                        <Card sx={{
-                            background: linkedinConnected
-                                ? 'linear-gradient(135deg, #0A66C2 0%, #378FE9 100%)'
-                                : 'linear-gradient(135deg, #D4C4B0 0%, #B8A082 100%)',
-                            color: 'white',
-                            textAlign: 'center',
-                        }}>
-                            <CardContent sx={{ p: 4 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, mb: 2 }}>
-                                    <AutoAwesomeIcon sx={{ fontSize: 32 }} />
-                                    <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                    <div className="lg:col-span-12">
+                        <div className={`text-center text-white rounded-3xl shadow-soft-lg transition-all duration-300 hover:-translate-y-1 ${linkedinConnected
+                            ? 'bg-gradient-to-br from-linkedin-600 to-linkedin-700'
+                            : 'bg-gradient-to-br from-gray-400 to-gray-500'
+                            }`}>
+                            <div className="p-8">
+                                <div className="flex items-center justify-center space-x-3 mb-4">
+                                    <Sparkles className="w-8 h-8" />
+                                    <h2 className="text-2xl font-bold">
                                         {linkedinConnected ? 'Ready to Create Amazing Content?' : 'Connect LinkedIn to Get Started'}
-                                    </Typography>
-                                </Box>
-                                <Typography variant="body1" sx={{ mb: 3, opacity: 0.9 }}>
+                                    </h2>
+                                </div>
+                                <p className="text-lg mb-6 opacity-90">
                                     {linkedinConnected
                                         ? 'Transform your ideas into engaging LinkedIn posts with AI-powered assistance'
                                         : 'Connect your LinkedIn account to unlock the full potential of AI-powered content creation'
                                     }
-                                </Typography>
-                                <Button
-                                    variant="contained"
-                                    size="large"
+                                </p>
+                                <button
                                     onClick={onCreatePost}
                                     disabled={!linkedinConnected}
-                                    sx={{
-                                        py: 2,
-                                        px: 4,
-                                        fontSize: '1.1rem',
-                                        fontWeight: 600,
-                                        borderRadius: 3,
-                                        backgroundColor: linkedinConnected ? 'rgba(255, 255, 255, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                                        color: 'white',
-                                        border: '2px solid rgba(255, 255, 255, 0.3)',
-                                        '&:hover': {
-                                            backgroundColor: 'rgba(255, 255, 255, 0.3)',
-                                            transform: 'translateY(-2px)',
-                                        },
-                                        '&:disabled': {
-                                            backgroundColor: 'rgba(255, 255, 255, 0.1)',
-                                            color: 'rgba(255, 255, 255, 0.6)',
-                                        },
-                                    }}
+                                    className={`px-8 py-4 bg-white font-semibold text-lg rounded-2xl transition-all duration-300 transform hover:-translate-y-1 disabled:opacity-70 disabled:cursor-not-allowed ${linkedinConnected
+                                        ? 'text-linkedin-600 hover:bg-gray-50 shadow-lg'
+                                        : 'text-gray-500'
+                                        }`}
                                 >
                                     {linkedinConnected ? 'Create LinkedIn Post' : 'Connect LinkedIn First'}
-                                </Button>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                </Grid>
-            </Container>
-        </Box>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     );
 };
 
