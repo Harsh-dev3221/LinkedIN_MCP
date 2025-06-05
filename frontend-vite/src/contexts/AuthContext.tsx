@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useRef, useCallb
 import { User as SupabaseUser, Session } from '@supabase/supabase-js';
 import { supabase, User, TokenStatus } from '../lib/supabase';
 import axios from 'axios';
+import { logger } from '../utils/logger';
 
 interface AuthContextType {
     user: User | null;
@@ -95,11 +96,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 // Set up auth listener FIRST (before processing initial session)
                 const { data: { subscription } } = supabase.auth.onAuthStateChange(
                     async (event, session) => {
-                        console.log(`🔔 Auth event: ${event}, Session exists: ${!!session?.user}`);
+                        logger.debug(`Auth event: ${event}, Session exists: ${!!session?.user}`);
 
                         // Prevent processing if already processing a session
                         if (sessionProcessingRef.current) {
-                            console.log(`⏳ BLOCKED: Session already being processed`);
+                            logger.debug(`Session already being processed`);
                             return;
                         }
 
@@ -108,7 +109,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
                         // Skip if we just processed this exact session
                         if (sessionId && lastProcessedSessionRef.current === sessionId) {
-                            console.log(`🔄 SKIPPED: Session already processed: ${sessionId}`);
+                            logger.debug(`Session already processed`);
                             return;
                         }
 
@@ -130,16 +131,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                             resetAuthState();
                         } else if (event === 'TOKEN_REFRESHED') {
                             // Don't create user on token refresh, just update session
-                            console.log(`🔄 Token refreshed, session updated`);
+                            logger.debug(`Token refreshed, session updated`);
                         } else {
-                            console.log(`ℹ️ Ignored auth event: ${event}`);
+                            logger.debug(`Ignored auth event: ${event}`);
                         }
                     }
                 );
 
                 // Process initial session AFTER listener is set up
                 if (session?.user) {
-                    console.log(`🔄 Processing initial session for: ${session.user.email}`);
+                    logger.debug(`Processing initial session`);
                     const sessionId = `${session.user.id}-${session.access_token?.substring(0, 10)}`;
                     lastProcessedSessionRef.current = sessionId;
                     sessionProcessingRef.current = true;
@@ -149,14 +150,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                         sessionProcessingRef.current = false;
                     }
                 } else {
-                    console.log(`ℹ️ No initial session found`);
+                    logger.debug(`No initial session found`);
                     setAuthState(AuthState.READY);
                     setLoading(false);
                 }
 
                 return () => subscription.unsubscribe();
             } catch (error) {
-                console.error('Auth initialization error:', error);
+                logger.error('Auth initialization error:', error);
                 setAuthState(AuthState.ERROR);
                 setLoading(false);
             }
@@ -169,7 +170,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Reset auth state on logout - SECURITY: Clear ALL user data
     const resetAuthState = useCallback(() => {
-        console.log('🧹 SECURITY: Clearing all user data and tokens');
+        logger.debug('Clearing all user data and tokens');
 
         // Clear React state
         setUser(null);
@@ -192,37 +193,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         lastProcessedSessionRef.current = null;
         sessionProcessingRef.current = false;
 
-        console.log('✅ SECURITY: All user data cleared successfully');
+        logger.debug('All user data cleared successfully');
     }, []);
 
     // Create or get user - ABSOLUTELY no duplicate calls
     const createOrGetUser = useCallback(async (supabaseUser: SupabaseUser, session: Session) => {
         const userKey = `${supabaseUser.id}-${supabaseUser.email}`;
 
-        console.log(`🔍 createOrGetUser called for: ${supabaseUser.email}`);
+        logger.debug(`createOrGetUser called`);
 
         // FIRST CHECK: Prevent duplicate user creation
         if (userCreationRef.current.has(userKey)) {
-            console.log(`❌ BLOCKED: User creation already in progress for: ${supabaseUser.email}`);
+            logger.debug(`User creation already in progress`);
             return;
         }
 
         // SECOND CHECK: If we already have this exact user, skip completely
         if (user && user.email === supabaseUser.email) {
-            console.log(`✅ SKIPPED: User already exists: ${supabaseUser.email}`);
+            logger.debug(`User already exists`);
             setLoading(false);
             return;
         }
 
         // THIRD CHECK: If auth state is already READY or AUTHENTICATED, skip
         if (authState === AuthState.READY || authState === AuthState.AUTHENTICATED) {
-            console.log(`✅ SKIPPED: Auth already in progress/complete for: ${supabaseUser.email}`);
+            logger.debug(`Auth already in progress/complete`);
             setLoading(false);
             return;
         }
 
         try {
-            console.log(`🚀 PROCEEDING: Creating/getting user: ${supabaseUser.email}`);
+            logger.debug(`Creating/getting user`);
             userCreationRef.current.add(userKey);
             setAuthState(AuthState.AUTHENTICATED);
 
@@ -243,11 +244,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
             if (response.data.success) {
                 const backendUser = response.data.user;
-                console.log(`✅ SUCCESS: User created/retrieved: ${backendUser.email}`);
+                logger.debug(`User created/retrieved successfully`);
 
                 // SECURITY: Check if this is a different user than last time
                 if (lastAuthenticatedUserId && lastAuthenticatedUserId !== backendUser.id) {
-                    console.log('🔄 SECURITY: Different user detected, clearing previous user data');
+                    logger.debug('Different user detected, clearing previous user data');
                     localStorage.removeItem('mcp_token');
                     localStorage.removeItem('linkedin_oauth_state');
                     localStorage.removeItem('codeVerifier');
@@ -264,15 +265,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
                 // Fetch token status (inline to avoid circular dependency)
                 try {
+                    logger.debug('Fetching token status during user creation/login');
                     const tokenResponse = await axios.get(`${API_BASE_URL}/api/users/tokens`, {
                         headers: { Authorization: `Bearer ${session.access_token}` },
                         timeout: 10000
                     });
+                    logger.debug('Token response during user creation received');
                     if (tokenResponse.data.success) {
+                        logger.debug('Setting token status during user creation');
                         setTokenStatus(tokenResponse.data.tokens);
+                    } else {
+                        logger.debug('Token status not successful during user creation');
                     }
                 } catch (error) {
-                    console.error('Error fetching token status:', error);
+                    logger.error('Error fetching token status during user creation:', error);
                 }
 
                 // Check LinkedIn status (inline to avoid circular dependency)
@@ -306,7 +312,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 throw new Error('Failed to create user');
             }
         } catch (error) {
-            console.error('❌ ERROR creating user:', error);
+            logger.error('Error creating user:', error);
             setAuthState(AuthState.ERROR);
         } finally {
             userCreationRef.current.delete(userKey);
@@ -317,6 +323,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Fetch token status from backend
     const fetchTokenStatus = useCallback(async (accessToken: string) => {
         try {
+            logger.debug('Fetching token status');
             const response = await axios.get(`${API_BASE_URL}/api/users/tokens`, {
                 headers: {
                     Authorization: `Bearer ${accessToken}`
@@ -324,11 +331,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 timeout: 10000
             });
 
+            logger.debug('Token status response received');
             if (response.data.success) {
+                logger.debug('Setting token status');
                 setTokenStatus(response.data.tokens);
+            } else {
+                logger.debug('Token status fetch failed');
             }
         } catch (error) {
-            console.error('Error fetching token status:', error);
+            logger.error('Error fetching token status:', error);
         }
     }, [API_BASE_URL]);
 
@@ -340,13 +351,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             const now = Date.now();
 
             if (cache.token === token && (now - cache.timestamp) < TOKEN_VALIDATION_CACHE_DURATION) {
-                console.log('🔒 Using cached token validation result');
+                logger.debug('Using cached token validation result');
                 return cache.isValid;
             }
         }
 
         try {
-            console.log(`🔍 Validating MCP token...`);
+            logger.debug(`Validating MCP token`);
 
             // Prepare headers and body - include user info if available for security
             const headers: Record<string, string> = {
@@ -364,9 +375,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             if (user) {
                 headers['X-User-ID'] = user.id;
                 requestBody.params.userId = user.id;
-                console.log(`🔍 SECURITY: Including user ID for validation: ${user.email}`);
+                logger.debug(`Including user ID for validation`);
             } else {
-                console.log('🔍 Validating token without user context (during OAuth flow)');
+                logger.debug('Validating token without user context (during OAuth flow)');
             }
 
             const response = await fetch(`${API_BASE_URL}/mcp`, {
@@ -377,8 +388,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             });
 
             const responseData = await response.json();
-            console.log('🔍 Full response data:', JSON.stringify(responseData, null, 2));
-            console.log('🔍 Response structure check:', {
+            logger.debug('Response data received');
+            logger.debug('Response structure check', {
                 responseOk: response.ok,
                 hasIsError: 'isError' in responseData,
                 isError: responseData.isError,
@@ -390,8 +401,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
             // SECURITY: Additional check for token ownership (only if user is available)
             if (user && response.ok && !responseData.isError && responseData.userId && responseData.userId !== user.id) {
-                console.error('🚨 SECURITY VIOLATION: Token belongs to different user!');
-                console.error(`Expected user: ${user.id}, Token user: ${responseData.userId}`);
+                logger.error('SECURITY VIOLATION: Token belongs to different user!');
                 setMcpToken(null);
                 localStorage.removeItem('mcp_token');
                 setLinkedinConnected(false);
@@ -406,16 +416,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             };
 
             if (!isValid && (response.status === 401 || response.status === 403)) {
-                console.log('🔒 Clearing invalid/unauthorized token');
+                logger.debug('Clearing invalid/unauthorized token');
                 setMcpToken(null);
                 localStorage.removeItem('mcp_token');
                 setLinkedinConnected(false);
             }
 
-            console.log(`🔒 Token validation result: ${isValid ? 'VALID' : 'INVALID'}`);
+            logger.debug(`Token validation result: ${isValid ? 'VALID' : 'INVALID'}`);
             return isValid;
         } catch (error) {
-            console.error('🔒 Token validation failed:', error);
+            logger.error('Token validation failed:', error);
             // Cache negative result
             tokenValidationCacheRef.current = {
                 token,
@@ -430,28 +440,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const validateMcpTokenWithRetry = useCallback(async (token: string, maxRetries: number = 3): Promise<boolean> => {
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
-                console.log(`🔄 Attempt ${attempt}/${maxRetries}: Validating MCP token...`);
+                logger.debug(`Attempt ${attempt}/${maxRetries}: Validating MCP token`);
                 const isValid = await validateMcpToken(token, true);
 
                 if (isValid) {
-                    console.log(`✅ Token validation successful on attempt ${attempt}`);
+                    logger.debug(`Token validation successful on attempt ${attempt}`);
                     return true;
                 }
 
                 if (attempt < maxRetries) {
-                    console.log(`⏳ Attempt ${attempt} failed, waiting before retry...`);
+                    logger.debug(`Attempt ${attempt} failed, waiting before retry`);
                     await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
                 }
             } catch (error) {
-                console.error(`❌ Attempt ${attempt} failed with error:`, error);
+                logger.error(`Attempt ${attempt} failed with error:`, error);
                 if (attempt < maxRetries) {
-                    console.log(`⏳ Waiting before retry attempt ${attempt + 1}...`);
+                    logger.debug(`Waiting before retry attempt ${attempt + 1}`);
                     await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
                 }
             }
         }
 
-        console.error(`❌ All ${maxRetries} validation attempts failed`);
+        logger.error(`All ${maxRetries} validation attempts failed`);
         return false;
     }, [validateMcpToken]);
 
@@ -480,7 +490,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 setAuthState(AuthState.READY);
             }
         } catch (error) {
-            console.error('Error checking LinkedIn status:', error);
+            logger.error('Error checking LinkedIn status:', error);
             setLinkedinConnected(false);
         } finally {
             setLinkedinStatusLoading(false);
@@ -491,10 +501,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Effect to validate LinkedIn connection when mcpToken changes
     useEffect(() => {
         if (mcpToken && !linkedinValidationRef.current) {
-            console.log('🔍 MCP token detected, validating LinkedIn connection...');
+            logger.debug('MCP token detected, validating LinkedIn connection');
             checkLinkedInStatus();
         } else if (!mcpToken) {
-            console.log('🔗 No MCP token, setting LinkedIn as disconnected');
+            logger.debug('No MCP token, setting LinkedIn as disconnected');
             setLinkedinConnected(false);
         }
     }, [mcpToken, checkLinkedInStatus]);
@@ -515,7 +525,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             });
 
             if (error) {
-                console.error('Google sign in error:', error);
+                logger.error('Google sign in error:', error);
                 throw error;
             }
         } catch (error) {
@@ -563,8 +573,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const handleLinkedInCallback = async (code: string, state: string) => {
         try {
             setLoading(true);
-            console.log('🔗 Processing LinkedIn OAuth callback...');
-            console.log('Received state:', state);
+            logger.debug('Processing LinkedIn OAuth callback');
 
             // Verify state parameter
             const storedState = localStorage.getItem('linkedin_oauth_state');
@@ -574,21 +583,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 throw new Error('Missing OAuth state or code verifier');
             }
 
-            console.log('Stored state:', storedState);
-
             // Extract the state part (before the colon) for comparison
             let stateToCompare = state;
             if (state.includes(':')) {
                 stateToCompare = state.split(':')[0];
-                console.log('Extracted state for comparison:', stateToCompare);
+                logger.debug('Extracted state for comparison');
             }
 
             if (stateToCompare !== storedState) {
-                console.error('State mismatch:', { received: stateToCompare, stored: storedState });
+                logger.error('State mismatch detected');
                 throw new Error('Invalid OAuth state parameter');
             }
 
-            console.log('✅ State verification passed');
+            logger.debug('State verification passed');
 
             // Exchange code for MCP token
             const response = await fetch(`${API_BASE_URL}/oauth/token`, {
@@ -618,17 +625,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             // Store the MCP token FIRST
             setMcpToken(data.access_token);
             localStorage.setItem('mcp_token', data.access_token);
-            console.log('🔑 MCP token stored successfully');
+            logger.debug('MCP token stored successfully');
 
             // Set loading state to indicate validation is in progress
             setLinkedinStatusLoading(true);
 
             // Add a small delay to ensure database consistency before validation
-            console.log('⏳ Waiting for database consistency...');
+            logger.debug('Waiting for database consistency');
             await new Promise(resolve => setTimeout(resolve, 1000));
 
             // Validate the token with retry mechanism
-            console.log('🔍 Validating LinkedIn connection with retry...');
+            logger.debug('Validating LinkedIn connection with retry');
             const isValid = await validateMcpTokenWithRetry(data.access_token, 3);
 
             // CRITICAL: Set the connection status immediately and synchronously
@@ -637,7 +644,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
             // Force a state update to ensure UI components get the latest state
             if (isValid) {
-                console.log('✅ LinkedIn connection validated and state updated successfully');
+                logger.debug('LinkedIn connection validated and state updated successfully');
                 // Clear the validation cache to force fresh validation on next check
                 tokenValidationCacheRef.current = {
                     token: data.access_token,
@@ -645,7 +652,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                     timestamp: Date.now()
                 };
             } else {
-                console.warn('⚠️ LinkedIn connection validation failed after retries');
+                logger.warn('LinkedIn connection validation failed after retries');
                 // Clear invalid token
                 setMcpToken(null);
                 localStorage.removeItem('mcp_token');
@@ -655,12 +662,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             localStorage.removeItem('linkedin_oauth_state');
             localStorage.removeItem('codeVerifier');
 
-            console.log('🎉 LinkedIn OAuth completed successfully');
+            logger.debug('LinkedIn OAuth completed successfully');
 
             // Return the validation result for the callback component
             return isValid;
         } catch (error) {
-            console.error('❌ LinkedIn OAuth callback error:', error);
+            logger.error('LinkedIn OAuth callback error:', error);
             setLinkedinConnected(false);
             setMcpToken(null);
             localStorage.removeItem('mcp_token');
@@ -674,16 +681,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Manually refresh LinkedIn connection status (forces validation)
     const refreshLinkedInStatus = useCallback(async () => {
-        console.log('🔄 Manually refreshing LinkedIn connection status...');
+        logger.debug('Manually refreshing LinkedIn connection status');
         setLinkedinStatusLoading(true);
         try {
             if (mcpToken) {
                 const isValid = await validateMcpTokenWithRetry(mcpToken, 2); // Use retry with 2 attempts
                 setLinkedinConnected(isValid);
-                console.log(`🔗 LinkedIn connection status updated: ${isValid ? 'Connected' : 'Disconnected'}`);
+                logger.debug(`LinkedIn connection status updated: ${isValid ? 'Connected' : 'Disconnected'}`);
             } else {
                 setLinkedinConnected(false);
-                console.log('🔗 LinkedIn connection status updated: Disconnected (no token)');
+                logger.debug('LinkedIn connection status updated: Disconnected (no token)');
             }
         } finally {
             setLinkedinStatusLoading(false);
@@ -694,11 +701,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const refreshMcpToken = useCallback(async (): Promise<boolean> => {
         try {
             if (!user) {
-                console.error('No user found for MCP token refresh');
+                logger.error('No user found for MCP token refresh');
                 return false;
             }
 
-            console.log('Attempting to refresh MCP token...');
+            logger.debug('Attempting to refresh MCP token');
             setLoading(true);
 
             // Clear current token
@@ -710,7 +717,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             await connectLinkedIn();
             return true;
         } catch (error) {
-            console.error('Error refreshing MCP token:', error);
+            logger.error('Error refreshing MCP token:', error);
             return false;
         } finally {
             setLoading(false);
@@ -730,14 +737,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setLoading(true);
             const { error } = await supabase.auth.signOut();
             if (error) {
-                console.error('Sign out error:', error);
+                logger.error('Sign out error:', error);
                 throw error;
             }
 
             // Reset all state
             resetAuthState();
         } catch (error) {
-            console.error('Error signing out:', error);
+            logger.error('Error signing out:', error);
             throw error;
         } finally {
             setLoading(false);

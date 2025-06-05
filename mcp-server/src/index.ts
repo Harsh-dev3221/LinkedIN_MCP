@@ -9,9 +9,7 @@ import rateLimit from "express-rate-limit";
 
 import { OAuthServerProvider } from "./auth/OAuthServerProvider.js";
 import { Tools } from "./mcp/Tools.js";
-import { TransportsStore, AuthInfo } from "./mcp/TransportsStore.js";
-import { OAuthTokens } from "./auth/TokenStore.js";
-import { authMiddleware } from "./middleware/auth.js";
+import { TransportsStore } from "./mcp/TransportsStore.js";
 import { UserService } from "./services/UserService.js";
 import { LinkedInTokenService } from "./services/LinkedInTokenService.js";
 import { tokenScheduler } from "./services/TokenScheduler.js";
@@ -312,10 +310,115 @@ server.tool(
     }
 );
 
+// Register linkedin-analytics tool
+server.tool(
+    "linkedin-analytics",
+    "Get LinkedIn profile analytics and engagement metrics",
+    {},
+    async (_params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.getLinkedInAnalytics(linkedinTokens);
+    }
+);
+
+// Register intelligent content generation tool (NEW - Cursor AI-like system)
+server.tool(
+    "generate-intelligent-content",
+    "Generate AI-enhanced LinkedIn content using intelligent classification and optimization (FREE)",
+    {
+        content: z.string(),
+        userId: z.string().optional(),
+        userContext: z.object({
+            name: z.string().optional(),
+            role: z.string().optional(),
+            industry: z.string().optional(),
+            previousPosts: z.array(z.string()).optional()
+        }).optional(),
+    },
+    async ({ content, userId, userContext }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+
+        // Use intelligent AI orchestration system
+        return tools.generateIntelligentContent({ prompt: content, userContext }, linkedinTokens);
+    }
+);
+
 // Register create-post tool (Basic post - FREE content generation only)
 server.tool(
     "create-post",
     "Generate AI-enhanced LinkedIn post content (FREE - content generation only)",
+    {
+        content: z.string(),
+        userId: z.string().optional(),
+        storyType: z.enum(['journey', 'technical', 'achievement', 'learning']).optional(),
+    },
+    async ({ content, userId, storyType = 'journey' }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+
+        // Generate enhanced content using Gemini 2.0 Flash with story template (FREE)
+        const enhancedContentResult = await tools.generateTextContent({ prompt: content, storyType }, linkedinTokens);
+
+        if (enhancedContentResult.isError) {
+            // If AI enhancement fails, return original content
+            console.warn('AI enhancement failed, returning original content:', enhancedContentResult.content[0].text);
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: content
+                    }
+                ]
+            };
+        }
+
+        // Return the enhanced content for user review
+        return enhancedContentResult;
+    }
+);
+
+// Register specialized story creation tools
+server.tool(
+    "create-journey-story",
+    "Create a personal/professional journey story post (FREE - content generation only)",
     {
         content: z.string(),
         userId: z.string().optional(),
@@ -335,25 +438,85 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.generateTextContent({ prompt: content, storyType: 'journey' }, linkedinTokens);
+    }
+);
 
-        // Generate enhanced content using Gemini 2.0 Flash (FREE)
-        const enhancedContentResult = await tools.generateTextContent({ prompt: content }, linkedinTokens);
-
-        if (enhancedContentResult.isError) {
-            // If AI enhancement fails, return original content
-            console.warn('AI enhancement failed, returning original content:', enhancedContentResult.content[0].text);
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: content
-                    }
-                ]
-            };
+server.tool(
+    "create-technical-showcase",
+    "Create a technical achievement/project showcase story (FREE - content generation only)",
+    {
+        content: z.string(),
+        userId: z.string().optional(),
+    },
+    async ({ content, userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
         }
 
-        // Return the enhanced content for user review
-        return enhancedContentResult;
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.generateTextContent({ prompt: content, storyType: 'technical' }, linkedinTokens);
+    }
+);
+
+server.tool(
+    "create-achievement-post",
+    "Create an achievement celebration story (FREE - content generation only)",
+    {
+        content: z.string(),
+        userId: z.string().optional(),
+    },
+    async ({ content, userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.generateTextContent({ prompt: content, storyType: 'achievement' }, linkedinTokens);
+    }
+);
+
+server.tool(
+    "create-learning-story",
+    "Create an educational story with personal experience (FREE - content generation only)",
+    {
+        content: z.string(),
+        userId: z.string().optional(),
+    },
+    async ({ content, userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.generateTextContent({ prompt: content, storyType: 'learning' }, linkedinTokens);
     }
 );
 
@@ -778,16 +941,12 @@ app.post("/mcp", async (req, res) => {
             // SECURITY: Verify token ownership if user ID is provided
             if (requestUserId && authInfo.jti) {
                 try {
-                    // Get user ID from LinkedIn connection
-                    const { data: connection } = await linkedinTokenService.supabase
-                        .from('linkedin_connections')
-                        .select('user_id')
-                        .eq('mcp_token_id', authInfo.jti)
-                        .single();
+                    // Get user ID from LinkedIn connection using the public method
+                    const tokenOwnerUserId = await linkedinTokenService.getUserIdByMcpToken(authInfo.jti);
 
-                    if (connection && connection.user_id !== requestUserId) {
+                    if (tokenOwnerUserId && tokenOwnerUserId !== requestUserId) {
                         console.error('🚨 SECURITY VIOLATION: Token ownership mismatch!');
-                        console.error(`Token belongs to: ${connection.user_id}, Request from: ${requestUserId}`);
+                        console.error(`Token belongs to: ${tokenOwnerUserId}, Request from: ${requestUserId}`);
                         return res.status(403).json({
                             isError: true,
                             content: [{ type: "text", text: "Token ownership violation: This token does not belong to the requesting user" }]

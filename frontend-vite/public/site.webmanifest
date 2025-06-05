@@ -1,6 +1,6 @@
 {
-    "name": "LinkedIn Post Creator",
-    "short_name": "LinkedIn MCP",
+    "name": "PostWizz",
+    "short_name": "PostWizz",
     "icons": [
         {
             "src": "/android-chrome-192x192.png",

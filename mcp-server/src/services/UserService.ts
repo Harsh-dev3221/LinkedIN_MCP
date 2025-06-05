@@ -207,7 +207,21 @@ export class UserService {
             }
 
             if (!tokens) {
-                return null;
+                console.log(`No tokens found for user ${userId}, initializing...`);
+                // Auto-initialize tokens if they don't exist
+                try {
+                    const newTokens = await this.initializeUserTokens(userId);
+                    return {
+                        daily_tokens: newTokens.daily_tokens,
+                        tokens_used_today: newTokens.tokens_used_today,
+                        tokens_remaining: newTokens.daily_tokens - newTokens.tokens_used_today,
+                        last_refresh_date: newTokens.last_refresh_date,
+                        total_tokens_used: newTokens.total_tokens_used
+                    };
+                } catch (initError) {
+                    console.error('Failed to auto-initialize tokens:', initError);
+                    return null;
+                }
             }
 
             return {
@@ -344,6 +358,106 @@ export class UserService {
             }
         } catch (error) {
             console.error('Error recording post:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get dashboard analytics data
+     */
+    async getDashboardAnalytics(userId: string): Promise<any> {
+        try {
+            // Get basic user stats
+            const tokenStatus = await this.getUserTokenStatus(userId);
+            const postHistory = await this.getUserPostHistory(userId, 50);
+
+            // Calculate analytics from post history
+            const totalPosts = postHistory.length;
+            const thisWeekPosts = postHistory.filter(post => {
+                const postDate = new Date(post.created_at);
+                const weekAgo = new Date();
+                weekAgo.setDate(weekAgo.getDate() - 7);
+                return postDate >= weekAgo;
+            }).length;
+
+            // Calculate average engagement (mock data for now, will be real when LinkedIn analytics API is integrated)
+            const avgEngagement = totalPosts > 0 ? Math.floor(Math.random() * 20) + 80 : 0;
+
+            // Get token usage history for the week
+            const { data: weeklyUsage, error } = await supabase
+                .from('token_usage_history')
+                .select('*')
+                .eq('user_id', userId)
+                .gte('timestamp', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+                .order('timestamp', { ascending: false });
+
+            if (error) {
+                console.error('Error fetching weekly usage:', error);
+            }
+
+            // Calculate successful posts count (posts that consumed tokens = successful posts)
+            const successfulPostsThisWeek = weeklyUsage?.length || 0;
+
+            return {
+                totalPosts,
+                thisWeekPosts,
+                successfulPostsThisWeek, // New metric for successful posts
+                avgEngagement,
+                tokenStatus,
+                weeklyUsage: weeklyUsage || [],
+                lastUpdated: new Date().toISOString()
+            };
+        } catch (error) {
+            console.error('Error getting dashboard analytics:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get weekly activity statistics
+     */
+    async getWeeklyStats(userId: string): Promise<any[]> {
+        try {
+            const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const today = new Date();
+            const weekStats = [];
+
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+                const dayName = weekDays[date.getDay()];
+
+                // Get posts for this day
+                const startOfDay = new Date(date);
+                startOfDay.setHours(0, 0, 0, 0);
+                const endOfDay = new Date(date);
+                endOfDay.setHours(23, 59, 59, 999);
+
+                const { data: dayPosts, error } = await supabase
+                    .from('posts')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .gte('created_at', startOfDay.toISOString())
+                    .lte('created_at', endOfDay.toISOString());
+
+                if (error) {
+                    console.error('Error fetching day posts:', error);
+                }
+
+                const posts = dayPosts?.length || 0;
+                // Mock engagement data (will be real when LinkedIn analytics API is integrated)
+                const engagement = posts > 0 ? Math.floor(Math.random() * 20) + 75 : 0;
+
+                weekStats.push({
+                    day: dayName,
+                    posts,
+                    engagement
+                });
+            }
+
+            return weekStats;
+        } catch (error) {
+            console.error('Error getting weekly stats:', error);
             throw error;
         }
     }

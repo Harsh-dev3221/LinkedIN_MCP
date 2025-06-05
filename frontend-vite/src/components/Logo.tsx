@@ -77,7 +77,7 @@ const Logo: React.FC<LogoProps> = ({ size = 'medium', showText = true }) => {
                         textFillColor: 'transparent',
                     }}
                 >
-                    Post Creator
+                    PostWizz
                 </Typography>
             )}
         </Box>

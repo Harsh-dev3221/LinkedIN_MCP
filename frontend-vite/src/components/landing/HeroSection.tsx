@@ -128,7 +128,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
                                             <span className="text-white font-bold">AI</span>
                                         </div>
                                         <div>
-                                            <h3 className="font-semibold text-gray-900">Post AI Generator</h3>
+                                            <h3 className="font-semibold text-gray-900">PostWizz Generator</h3>
                                             <p className="text-sm text-gray-500">Creating your next viral post...</p>
                                         </div>
                                         {/* Orange trending icon */}

@@ -275,4 +275,30 @@ export class LinkedInTokenService {
             return [];
         }
     }
+
+    /**
+     * Get user ID by MCP token ID (for security verification)
+     */
+    async getUserIdByMcpToken(mcpTokenId: string): Promise<string | null> {
+        try {
+            const { data, error } = await this.supabase
+                .from('linkedin_connections')
+                .select('user_id')
+                .eq('mcp_token_id', mcpTokenId)
+                .single();
+
+            if (error) {
+                if (error.code === 'PGRST116') {
+                    return null; // No rows found
+                }
+                console.error('Error fetching user ID by MCP token:', error);
+                return null;
+            }
+
+            return data?.user_id || null;
+        } catch (error) {
+            console.error('Exception fetching user ID by MCP token:', error);
+            return null;
+        }
+    }
 }

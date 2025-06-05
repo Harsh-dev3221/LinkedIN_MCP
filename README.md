@@ -1,8 +1,8 @@
-# 🚀 LinkedIn Post Creator with AI - Professional SaaS Platform
+# 🚀 PostWizz - LinkedIn Content Creator with AI
 
 <div align="center">
 
-![LinkedIn Post Creator](https://img.shields.io/badge/LinkedIn-Post%20Creator-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)
+![PostWizz](https://img.shields.io/badge/PostWizz-LinkedIn%20Creator-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)
 ![AI Powered](https://img.shields.io/badge/AI-Powered-FF6B6B?style=for-the-badge&logo=openai&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
@@ -64,6 +64,11 @@ This project demonstrates **expert-level engineering skills** with:
 ## ✨ Key Features
 
 ### 🎨 **Content Creation Suite**
+- **Story-Driven Content Generation**: Transform ideas into compelling LinkedIn stories
+  - **Journey Stories**: Personal/professional growth narratives with challenges and breakthroughs
+  - **Technical Showcases**: Project launches with technical depth and implementation details
+  - **Achievement Posts**: Milestone celebrations with authentic storytelling
+  - **Learning Stories**: Educational content with personal insights and experiences
 - **Text-to-Post Generation**: Transform simple ideas into professional LinkedIn posts
 - **Image Analysis & Content**: Upload images and generate contextual content automatically
 - **Multi-Image Carousels**: Create engaging carousel posts with multiple images
@@ -264,9 +269,34 @@ JWT_SECRET=your_super_secret_jwt_key_here
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 
-# Gemini AI
+# Gemini AI - Multiple API Keys for Rate Limit Handling
+# Configure multiple API keys to handle high user loads and rate limits
+GEMINI_API_KEY_1=your_primary_gemini_api_key_123
+GEMINI_API_KEY_2=your_secondary_gemini_api_key_456
+GEMINI_API_KEY_3=your_tertiary_gemini_api_key_789
+
+# Legacy support (optional - will be used as primary if GEMINI_API_KEY_1 is not set)
 GEMINI_API_KEY=your_gemini_api_key
 ```
+
+### 🔑 **Multi-API Key Configuration**
+
+PostWizz supports multiple Google Gemini API keys for enhanced scalability and rate limit handling:
+
+- **Primary Key** (`GEMINI_API_KEY_1`): Main API key with highest priority
+- **Secondary Key** (`GEMINI_API_KEY_2`): Fallback when primary hits rate limits
+- **Tertiary Key** (`GEMINI_API_KEY_3`): Final fallback for maximum availability
+
+**Benefits:**
+- **3x Higher Capacity**: 180 requests/minute total (60 per key × 3 keys)
+- **Zero Downtime**: Automatic failover when rate limits are hit
+- **Load Distribution**: Smart load balancing across all available keys
+- **Enhanced Reliability**: Multiple fallbacks ensure service availability
+
+**Security Features:**
+- All API keys are stored securely in environment variables
+- Sensitive information is masked in logs (shows only first 8 characters)
+- Automatic error sanitization removes API keys from error messages
 
 **Frontend (.env)**:
 ```env
@@ -366,7 +396,11 @@ POST /mcp                    # Universal MCP tool endpoint
 ```
 
 **Available MCP Tools:**
-- `create-post`: Basic LinkedIn post creation (0 tokens)
+- `create-post`: Basic LinkedIn post creation with story type selection (0 tokens)
+- `create-journey-story`: Personal/professional journey narratives (0 tokens)
+- `create-technical-showcase`: Technical project and achievement stories (0 tokens)
+- `create-achievement-post`: Milestone and success celebration posts (0 tokens)
+- `create-learning-story`: Educational content with personal insights (0 tokens)
 - `analyze-image-create-post`: AI-enhanced single post (5 tokens)
 - `linkedin-post-with-multiple-images`: Multi-image carousel (10 tokens)
 - `analyze-image-structured-post`: Advanced structured content generation

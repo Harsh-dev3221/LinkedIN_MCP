@@ -168,6 +168,52 @@ router.get('/posts', authMiddleware.verifyToken, async (req: Request, res: Respo
 });
 
 /**
+ * POST /api/users/tokens/init - Initialize tokens for user if they don't exist
+ */
+router.post('/tokens/init', authMiddleware.verifyMcpToken, async (req: Request, res: Response) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                error: 'Unauthorized',
+                message: 'User not authenticated'
+            });
+        }
+
+        // Check if user already has tokens
+        const existingTokens = await userService.getUserTokenStatus(req.user.id);
+
+        if (existingTokens) {
+            return res.json({
+                success: true,
+                message: 'User already has tokens',
+                tokens: existingTokens
+            });
+        }
+
+        // Initialize tokens for the user
+        const newTokens = await userService.initializeUserTokens(req.user.id);
+
+        res.json({
+            success: true,
+            message: 'Tokens initialized successfully',
+            tokens: {
+                daily_tokens: newTokens.daily_tokens,
+                tokens_used_today: newTokens.tokens_used_today,
+                tokens_remaining: newTokens.daily_tokens - newTokens.tokens_used_today,
+                last_refresh_date: newTokens.last_refresh_date,
+                total_tokens_used: newTokens.total_tokens_used
+            }
+        });
+    } catch (error) {
+        console.error('Error initializing tokens:', error);
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to initialize tokens'
+        });
+    }
+});
+
+/**
  * POST /api/users/tokens/refresh - Manually refresh daily tokens
  */
 router.post('/tokens/refresh', authMiddleware.verifyToken, async (req: Request, res: Response) => {
@@ -191,7 +237,7 @@ router.post('/tokens/refresh', authMiddleware.verifyToken, async (req: Request, 
 /**
  * GET /api/users/linkedin-status - Check LinkedIn connection status
  */
-router.get('/linkedin-status', authMiddleware.verifyToken, async (req: Request, res: Response) => {
+router.get('/linkedin-status', authMiddleware.verifyMcpToken, async (req: Request, res: Response) => {
     try {
         if (!req.user) {
             return res.status(401).json({
@@ -211,6 +257,88 @@ router.get('/linkedin-status', authMiddleware.verifyToken, async (req: Request, 
         res.status(500).json({
             error: 'Internal Server Error',
             message: 'Failed to check LinkedIn connection'
+        });
+    }
+});
+
+/**
+ * GET /api/users/dashboard-analytics - Get dashboard analytics data
+ */
+router.get('/dashboard-analytics', authMiddleware.verifyMcpToken, async (req: Request, res: Response) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                error: 'Unauthorized',
+                message: 'User not authenticated'
+            });
+        }
+
+        const analytics = await userService.getDashboardAnalytics(req.user.id);
+
+        res.json({
+            success: true,
+            data: analytics
+        });
+    } catch (error) {
+        console.error('Error fetching dashboard analytics:', error);
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch dashboard analytics'
+        });
+    }
+});
+
+/**
+ * GET /api/users/post-history - Get user's post history with analytics
+ */
+router.get('/post-history', authMiddleware.verifyMcpToken, async (req: Request, res: Response) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                error: 'Unauthorized',
+                message: 'User not authenticated'
+            });
+        }
+
+        const limit = parseInt(req.query.limit as string) || 10;
+        const posts = await userService.getUserPostHistory(req.user.id, limit);
+
+        res.json({
+            success: true,
+            data: posts
+        });
+    } catch (error) {
+        console.error('Error fetching post history:', error);
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch post history'
+        });
+    }
+});
+
+/**
+ * GET /api/users/weekly-stats - Get weekly activity statistics
+ */
+router.get('/weekly-stats', authMiddleware.verifyMcpToken, async (req: Request, res: Response) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                error: 'Unauthorized',
+                message: 'User not authenticated'
+            });
+        }
+
+        const weeklyStats = await userService.getWeeklyStats(req.user.id);
+
+        res.json({
+            success: true,
+            data: weeklyStats
+        });
+    } catch (error) {
+        console.error('Error fetching weekly stats:', error);
+        res.status(500).json({
+            error: 'Internal Server Error',
+            message: 'Failed to fetch weekly stats'
         });
     }
 });

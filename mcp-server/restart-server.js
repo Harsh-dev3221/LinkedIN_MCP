@@ -1,6 +1,0 @@
-"// Kill any existing server on port 3001"  
-"const { exec } = require('child_process');"  
-"exec('npx kill-port 3001', (error) => {"  
-"  console.log('Starting server with correct credentials...');"  
-"  exec('npm run dev');"  
-"});" 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Mail, MapPin, Phone, Linkedin, Twitter, Github, Youtube } from 'lucide-react';
+import { Sparkles, Mail, Linkedin, Twitter, Github, Youtube } from 'lucide-react';
 
 const Footer: React.FC = () => {
     const currentYear = new Date().getFullYear();
@@ -54,28 +54,35 @@ const Footer: React.FC = () => {
                                 <Sparkles className="w-5 h-5 text-white" />
                             </div>
                             <div className="flex flex-col">
-                                <span className="text-xl font-bold">Post AI</span>
+                                <span className="text-xl font-bold">PostWizz</span>
                                 <span className="text-xs text-gray-400 -mt-1">LinkedIn Content Creator</span>
                             </div>
                         </div>
                         <p className="text-gray-300 mb-6 leading-relaxed">
-                            Transform your LinkedIn presence with AI-powered content creation. 
+                            Transform your LinkedIn presence with AI-powered content creation.
                             Generate engaging posts, build your personal brand, and grow your professional network effortlessly.
                         </p>
-                        
-                        {/* Contact Info */}
+
+                        {/* Developer Info */}
                         <div className="space-y-3">
+                            <h4 className="text-sm font-semibold text-white mb-3">Developer</h4>
                             <div className="flex items-center space-x-3 text-gray-300">
                                 <Mail className="w-4 h-4 text-linkedin-400" />
-                                <span className="text-sm">hello@postai.com</span>
+                                <a href="mailto:harshpatel25800@gmail.com" className="text-sm hover:text-linkedin-400 transition-colors">
+                                    harshpatel25800@gmail.com
+                                </a>
                             </div>
                             <div className="flex items-center space-x-3 text-gray-300">
-                                <Phone className="w-4 h-4 text-linkedin-400" />
-                                <span className="text-sm">+1 (555) 123-4567</span>
+                                <Github className="w-4 h-4 text-linkedin-400" />
+                                <a href="https://github.com/Harsh-dev3221" target="_blank" rel="noopener noreferrer" className="text-sm hover:text-linkedin-400 transition-colors">
+                                    GitHub Profile
+                                </a>
                             </div>
                             <div className="flex items-center space-x-3 text-gray-300">
-                                <MapPin className="w-4 h-4 text-linkedin-400" />
-                                <span className="text-sm">San Francisco, CA</span>
+                                <Linkedin className="w-4 h-4 text-linkedin-400" />
+                                <a href="https://www.linkedin.com/in/harsh-patel-40b043319/" target="_blank" rel="noopener noreferrer" className="text-sm hover:text-linkedin-400 transition-colors">
+                                    LinkedIn Profile
+                                </a>
                             </div>
                         </div>
                     </div>
@@ -86,8 +93,8 @@ const Footer: React.FC = () => {
                         <ul className="space-y-3">
                             {footerLinks.product.map((link, index) => (
                                 <li key={index}>
-                                    <a 
-                                        href={link.href} 
+                                    <a
+                                        href={link.href}
                                         className="text-gray-300 hover:text-linkedin-400 transition-colors text-sm"
                                     >
                                         {link.name}
@@ -103,8 +110,8 @@ const Footer: React.FC = () => {
                         <ul className="space-y-3">
                             {footerLinks.company.map((link, index) => (
                                 <li key={index}>
-                                    <a 
-                                        href={link.href} 
+                                    <a
+                                        href={link.href}
                                         className="text-gray-300 hover:text-linkedin-400 transition-colors text-sm"
                                     >
                                         {link.name}
@@ -120,8 +127,8 @@ const Footer: React.FC = () => {
                         <ul className="space-y-3">
                             {footerLinks.resources.map((link, index) => (
                                 <li key={index}>
-                                    <a 
-                                        href={link.href} 
+                                    <a
+                                        href={link.href}
                                         className="text-gray-300 hover:text-linkedin-400 transition-colors text-sm"
                                     >
                                         {link.name}
@@ -137,8 +144,8 @@ const Footer: React.FC = () => {
                         <ul className="space-y-3">
                             {footerLinks.legal.map((link, index) => (
                                 <li key={index}>
-                                    <a 
-                                        href={link.href} 
+                                    <a
+                                        href={link.href}
                                         className="text-gray-300 hover:text-linkedin-400 transition-colors text-sm"
                                     >
                                         {link.name}
@@ -175,9 +182,9 @@ const Footer: React.FC = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                     <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
                         <div className="text-gray-400 text-sm">
-                            © {currentYear} Post AI. All rights reserved. Made with ❤️ for LinkedIn creators.
+                            © {currentYear} PostWizz. All rights reserved. Made with ❤️ for LinkedIn creators.
                         </div>
-                        
+
                         {/* Social Links */}
                         <div className="flex items-center space-x-6">
                             {socialLinks.map((social, index) => {

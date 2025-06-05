@@ -3,7 +3,6 @@ import {
     Sparkles,
     TrendingUp,
     Users,
-    Zap,
     Target,
     Clock,
     BarChart3,

@@ -10,12 +10,20 @@ import {
     CircularProgress,
     Card,
     Tabs,
-    Tab
+    Tab,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem
 } from '@mui/material';
 import ImageIcon from '@mui/icons-material/Image';
 import CollectionsIcon from '@mui/icons-material/Collections';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import FormatQuoteIcon from '@mui/icons-material/FormatQuote';
+import TimelineIcon from '@mui/icons-material/Timeline';
+import CodeIcon from '@mui/icons-material/Code';
+import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
+import SchoolIcon from '@mui/icons-material/School';
 import { useDropzone } from 'react-dropzone';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -44,11 +52,8 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
 
                 return response.data;
             } catch (error: any) {
-                console.error(`Error calling tool ${toolName}:`, error);
-
                 // Handle authentication errors
                 if (error.response?.status === 401 || error.response?.status === 403) {
-                    console.error('MCP token expired or invalid');
                     if (onTokenExpired) {
                         onTokenExpired();
                     }
@@ -91,10 +96,44 @@ const PostAI = ({ authToken, userId, onGeneratedContent, onError, onSuccess, onT
     const [imageMode, setImageMode] = useState<'single' | 'multi'>('single');
     const [selectedImages, setSelectedImages] = useState<{ base64: string, mimeType: string }[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
+    const [storyType, setStoryType] = useState<'journey' | 'technical' | 'achievement' | 'learning'>('journey');
+    const [useIntelligentClassification, setUseIntelligentClassification] = useState(true);
 
     // Constants
     const MIN_IMAGES = 2;
     const MAX_IMAGES = 10;
+
+    // Story type configurations
+    const storyTypes = [
+        {
+            value: 'journey',
+            label: 'Journey Story',
+            icon: <TimelineIcon />,
+            description: 'Personal/professional journey with challenges and growth',
+            example: 'From learning MCP to launching PostWizz...'
+        },
+        {
+            value: 'technical',
+            label: 'Technical Showcase',
+            icon: <CodeIcon />,
+            description: 'Technical achievements, projects, and implementations',
+            example: 'Built a custom MCP server with React 19...'
+        },
+        {
+            value: 'achievement',
+            label: 'Achievement Post',
+            icon: <EmojiEventsIcon />,
+            description: 'Celebrating milestones, launches, and successes',
+            example: 'Just launched PostWizz after 6 months...'
+        },
+        {
+            value: 'learning',
+            label: 'Learning Story',
+            icon: <SchoolIcon />,
+            description: 'Educational content with personal insights',
+            example: 'What I learned building an AI assistant...'
+        }
+    ] as const;
 
     // Handle image drop/selection
     const onDrop = (acceptedFiles: File[]) => {
@@ -163,14 +202,44 @@ const PostAI = ({ authToken, userId, onGeneratedContent, onError, onSuccess, onT
         try {
             const mcpClient = createMcpClient(authToken, onTokenExpired);
 
-            // Text-only post
+            // Text-only post with intelligent or manual classification
             if (!isImageEnabled || selectedImages.length === 0) {
-                const result = await mcpClient.callTool('create-post', {
-                    content: postText,
-                    userId: userId
-                });
-                onGeneratedContent({ content: result.content[0].text });
-                onSuccess('Content generated successfully!');
+                if (useIntelligentClassification) {
+                    try {
+                        // Use intelligent AI classification and generation
+                        const result = await mcpClient.callTool('generate-intelligent-content', {
+                            content: postText,
+                            userId: userId,
+                            userContext: {
+                                name: userId, // Will be enhanced with actual user data
+                                role: undefined, // Could be collected from user profile
+                                industry: undefined, // Could be inferred from LinkedIn data
+                                previousPosts: [] // Could be stored for learning
+                            }
+                        });
+                        onGeneratedContent({ content: result.content[0].text });
+                        onSuccess('🧠 Intelligent content generated successfully!');
+                    } catch (error) {
+                        // Intelligent generation failed, falling back to manual story type
+                        // Fallback to manual story type selection
+                        const result = await mcpClient.callTool('create-post', {
+                            content: postText,
+                            userId: userId,
+                            storyType: storyType
+                        });
+                        onGeneratedContent({ content: result.content[0].text });
+                        onSuccess('Content generated successfully (fallback)!');
+                    }
+                } else {
+                    // Use manual story type selection
+                    const result = await mcpClient.callTool('create-post', {
+                        content: postText,
+                        userId: userId,
+                        storyType: storyType
+                    });
+                    onGeneratedContent({ content: result.content[0].text });
+                    onSuccess(`${storyTypes.find(t => t.value === storyType)?.label} story generated successfully!`);
+                }
             }
             // Single image post
             else if (imageMode === 'single' && selectedImages.length > 0) {
@@ -244,7 +313,6 @@ My draft text to enhance: "${postText}"`,
                 onError(`Please select at least ${MIN_IMAGES} images for a carousel post.`);
             }
         } catch (error) {
-            console.error('Error processing content:', error);
             onError((error instanceof Error) ? error.message : 'An unknown error occurred');
         } finally {
             setIsProcessing(false);
@@ -263,14 +331,90 @@ My draft text to enhance: "${postText}"`,
         >
             <Typography variant="h5" gutterBottom sx={{ mb: 3, textAlign: 'center' }}>
                 <AutoAwesomeIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                PostAI - Smart LinkedIn Content Creator
+                PostWizz - Smart LinkedIn Content Creator
             </Typography>
 
             <Box sx={{ mb: 4 }}>
+                {/* AI Classification Toggle */}
+                <Box sx={{ mb: 3, p: 2, backgroundColor: 'rgba(76, 175, 80, 0.05)', borderRadius: 2, border: '1px solid rgba(76, 175, 80, 0.2)' }}>
+                    <FormControlLabel
+                        control={
+                            <Switch
+                                checked={useIntelligentClassification}
+                                onChange={(e) => setUseIntelligentClassification(e.target.checked)}
+                                disabled={isProcessing}
+                                color="primary"
+                            />
+                        }
+                        label={
+                            <Box>
+                                <Typography variant="body1" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                                    🧠 Intelligent AI Classification
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                                    {useIntelligentClassification
+                                        ? 'AI will automatically detect the best story type for your content'
+                                        : 'Manually select the story type below'
+                                    }
+                                </Typography>
+                            </Box>
+                        }
+                    />
+                </Box>
+
+                {/* Story Type Selector - Only show when manual classification is enabled */}
+                {!useIntelligentClassification && (
+                    <FormControl fullWidth sx={{ mb: 3 }}>
+                        <InputLabel id="story-type-label">Story Type</InputLabel>
+                        <Select
+                            labelId="story-type-label"
+                            value={storyType}
+                            label="Story Type"
+                            onChange={(e) => setStoryType(e.target.value as typeof storyType)}
+                            disabled={isProcessing}
+                            sx={{
+                                borderRadius: 2,
+                                backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            }}
+                        >
+                            {storyTypes.map((type) => (
+                                <MenuItem key={type.value} value={type.value}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        {type.icon}
+                                        <Box>
+                                            <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                                                {type.label}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                                                {type.description}
+                                            </Typography>
+                                        </Box>
+                                    </Box>
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                )}
+
+                {/* Story Type Example - Only show when manual classification is enabled */}
+                {!useIntelligentClassification && (
+                    <Box sx={{ mb: 2, p: 2, backgroundColor: 'rgba(255, 138, 0, 0.05)', borderRadius: 2, border: '1px solid rgba(255, 138, 0, 0.2)' }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1, fontWeight: 600 }}>
+                            Example for {storyTypes.find(t => t.value === storyType)?.label}:
+                        </Typography>
+                        <Typography variant="body2" sx={{ fontStyle: 'italic', color: 'text.secondary' }}>
+                            "{storyTypes.find(t => t.value === storyType)?.example}"
+                        </Typography>
+                    </Box>
+                )}
+
                 <TextField
                     fullWidth
                     label="Your LinkedIn Post Draft"
-                    placeholder="Write your LinkedIn post draft here. Our AI will enhance it with engaging content and formatting."
+                    placeholder={useIntelligentClassification
+                        ? "Write your content here. Our AI will automatically detect the best story type and enhance it with engaging formatting."
+                        : `Write your ${storyTypes.find(t => t.value === storyType)?.label.toLowerCase()} here. Our AI will enhance it with engaging content and formatting.`
+                    }
                     value={postText}
                     onChange={(e) => setPostText(e.target.value)}
                     multiline

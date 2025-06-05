@@ -8,7 +8,7 @@ interface UserProfileCardProps {
     getProviderColor: (provider: string) => string;
 }
 
-const UserProfileCard: React.FC<UserProfileCardProps> = ({ user, onSignOut, getProviderColor }) => {
+const UserProfileCard: React.FC<UserProfileCardProps> = ({ user, onSignOut }) => {
     return (
         <div className="bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-soft transition-all duration-300 sticky top-24">
             {/* Profile Header */}
@@ -40,8 +40,8 @@ const UserProfileCard: React.FC<UserProfileCardProps> = ({ user, onSignOut, getP
                     </p>
                     <span
                         className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-medium text-white capitalize ${user?.provider === 'google' ? 'bg-blue-500' :
-                                user?.provider === 'linkedin' ? 'bg-linkedin-500' :
-                                    'bg-gray-500'
+                            user?.provider === 'linkedin' ? 'bg-linkedin-500' :
+                                'bg-gray-500'
                             }`}
                     >
                         {user?.provider} Account

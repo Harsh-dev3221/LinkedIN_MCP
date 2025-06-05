@@ -12,7 +12,7 @@ interface LandingPageProps {
     onGetStarted?: () => void;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ onGetStarted }) => {
+const LandingPage: React.FC<LandingPageProps> = () => {
     const { user, loading } = useAuth();
     const navigate = useNavigate();
     const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);

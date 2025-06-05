@@ -1,5 +1,6 @@
 import axios from "axios";
 import Logger from "../utils/Logger.js";
+import { AIOrchestrator } from "../ai/AIOrchestrator.js";
 
 // Define CallToolResult interface since we can't import it
 interface CallToolContent {
@@ -30,6 +31,13 @@ export class Tools {
     private readonly BASE_FIELDS = '(id,localizedFirstName,localizedLastName)';
     private readonly PROFILE_PIC_FIELDS = 'profilePicture(displayImage~:playableStreams)';
     private readonly EMAIL_FIELDS = 'emailAddress';
+
+    // AI Orchestration system for intelligent content generation
+    private aiOrchestrator: AIOrchestrator;
+
+    constructor() {
+        this.aiOrchestrator = new AIOrchestrator();
+    }
 
     /**
      * Helper method to get headers specifically for OpenID Connect endpoints
@@ -383,6 +391,43 @@ export class Tools {
     }
 
     /**
+     * Get LinkedIn profile analytics and insights
+     * Note: This is a mock implementation as LinkedIn's analytics APIs require special permissions
+     */
+    public getLinkedInAnalytics = async (linkedinTokens: OAuthTokens): Promise<CallToolResult> => {
+        try {
+            console.log('📊 Getting LinkedIn analytics...');
+
+            // For now, we'll return mock analytics data
+            // In a production environment, you would need:
+            // 1. LinkedIn Marketing API access
+            // 2. Company page admin permissions
+            // 3. Proper analytics API endpoints
+
+            const mockAnalytics = {
+                profileViews: Math.floor(Math.random() * 100) + 50,
+                searchAppearances: Math.floor(Math.random() * 50) + 20,
+                postImpressions: Math.floor(Math.random() * 1000) + 500,
+                engagementRate: Math.floor(Math.random() * 20) + 80,
+                followerCount: Math.floor(Math.random() * 500) + 200,
+                connectionRequests: Math.floor(Math.random() * 10) + 5,
+                lastUpdated: new Date().toISOString()
+            };
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: JSON.stringify(mockAnalytics)
+                    }
+                ]
+            };
+        } catch (e: any) {
+            return this.handleLinkedInError(e, 'analytics retrieval');
+        }
+    }
+
+    /**
      * Helper method to get a consistent set of LinkedIn API headers
      * Ensures all required headers are present and correctly formatted
      */
@@ -686,9 +731,166 @@ export class Tools {
         return { isValid: true };
     }
 
-    // Generate enhanced LinkedIn post content from text using Gemini 2.0 Flash
-    public generateTextContent = async (
-        { prompt }: { prompt: string },
+    // Enhanced story template system for different post types
+    private getStoryTemplate(storyType: string, userName: string, userPrompt: string): string {
+        const templates = {
+            'journey': `
+You are writing a compelling LinkedIn journey story directly. Do not include any introductory text, explanations, or meta-commentary.
+
+Transform this into a personal/professional journey story: ${userPrompt}
+
+Write for ${userName} using this JOURNEY STORY structure:
+
+STORY ARC:
+1. **The Challenge/Problem** (1-2 sentences): Start with a relatable problem or challenge
+2. **The Journey/Learning** (2-3 sentences): Describe the learning process, struggles, discoveries
+3. **The Solution/Breakthrough** (1-2 sentences): The key insight or solution found
+4. **The Results/Impact** (1-2 sentences): What was achieved or learned
+5. **The Lesson/Takeaway** (1 sentence): Universal lesson for the audience
+6. **Engagement Hook** (1 question): Ask something that invites discussion
+
+TONE & STYLE:
+- Personal and authentic, like talking to a colleague
+- Mix of vulnerability and confidence
+- Technical details without overwhelming jargon
+- Self-aware humor where appropriate
+- Professional yet conversational
+
+FORMATTING:
+- Use emojis strategically (2-3 total) for visual breaks
+- Bold key phrases sparingly (1-2 maximum)
+- Short paragraphs for mobile readability
+- Include 4-6 relevant hashtags at the end
+
+ABSOLUTELY FORBIDDEN:
+- Generic advice or platitudes
+- Overly promotional language
+- Meta-commentary about the post
+- Placeholder text in brackets
+- Introductory phrases like "Here's my story"
+
+Start immediately with the first word of your story.`,
+
+            'technical': `
+You are writing a technical showcase story directly. Do not include any introductory text, explanations, or meta-commentary.
+
+Transform this into a technical achievement story: ${userPrompt}
+
+Write for ${userName} using this TECHNICAL STORY structure:
+
+STORY ARC:
+1. **The Technical Challenge** (1-2 sentences): What problem needed solving
+2. **The Research/Exploration** (2-3 sentences): Technologies explored, decisions made
+3. **The Implementation** (2-3 sentences): Key technical decisions and interesting solutions
+4. **The Results** (1-2 sentences): What was built and its impact
+5. **The Learning** (1 sentence): Key technical insight gained
+6. **Community Question** (1 question): Ask about others' experiences with similar tech
+
+TECHNICAL DEPTH:
+- Include specific technologies, frameworks, or methodologies
+- Explain complex concepts in accessible terms
+- Share actual challenges and how they were overcome
+- Mention metrics or concrete results where relevant
+
+TONE:
+- Confident but not arrogant
+- Educational and helpful to other developers
+- Honest about challenges and failures
+- Excited about technology and innovation
+
+FORMATTING:
+- Use technical terms appropriately
+- Bold key technologies or concepts (2-3 maximum)
+- Include relevant emojis (2-3 total)
+- End with 4-6 technical hashtags
+
+Start immediately with the technical challenge or achievement.`,
+
+            'achievement': `
+You are writing an achievement celebration story directly. Do not include any introductory text, explanations, or meta-commentary.
+
+Transform this into an achievement story: ${userPrompt}
+
+Write for ${userName} using this ACHIEVEMENT STORY structure:
+
+STORY ARC:
+1. **The Milestone** (1 sentence): What was achieved
+2. **The Journey** (2-3 sentences): Brief story of how you got here
+3. **The Challenges** (1-2 sentences): What made this difficult or meaningful
+4. **The Team/Support** (1-2 sentences): Who helped or what you learned
+5. **The Impact** (1-2 sentences): Why this matters or what's next
+6. **Gratitude/Forward Look** (1 question): Thank supporters and ask for engagement
+
+TONE:
+- Celebratory but humble
+- Grateful and inclusive of others
+- Inspiring without being preachy
+- Authentic excitement and pride
+
+EMOTIONAL ELEMENTS:
+- Share genuine emotions about the achievement
+- Include moments of doubt or struggle
+- Express gratitude to supporters
+- Show excitement for what's next
+
+FORMATTING:
+- Use celebratory emojis appropriately (2-4 total)
+- Bold the key achievement (1-2 phrases)
+- Keep energy high throughout
+- End with 4-6 relevant hashtags
+
+Start immediately with the achievement or exciting news.`,
+
+            'learning': `
+You are writing an educational story with personal experience directly. Do not include any introductory text, explanations, or meta-commentary.
+
+Transform this into a learning/educational story: ${userPrompt}
+
+Write for ${userName} using this LEARNING STORY structure:
+
+STORY ARC:
+1. **The Discovery** (1-2 sentences): What you learned or discovered
+2. **The Context** (1-2 sentences): Why this learning was important
+3. **The Process** (2-3 sentences): How you learned it, what surprised you
+4. **The Application** (1-2 sentences): How you applied this knowledge
+5. **The Insight** (1-2 sentences): Deeper understanding or unexpected connections
+6. **Knowledge Sharing** (1 question): Ask others about their experiences
+
+EDUCATIONAL VALUE:
+- Share specific, actionable insights
+- Include concrete examples or use cases
+- Explain complex concepts simply
+- Provide practical takeaways for readers
+
+TONE:
+- Curious and enthusiastic about learning
+- Humble about not knowing everything
+- Excited to share knowledge
+- Encouraging others to learn
+
+FORMATTING:
+- Use learning-focused emojis (2-3 total)
+- Bold key concepts or insights (1-2 maximum)
+- Structure for easy scanning
+- Include 4-6 educational/industry hashtags
+
+Start immediately with the learning or insight.`
+        };
+
+        return templates[storyType as keyof typeof templates] || templates.journey;
+    }
+
+    // Intelligent content generation using AI Orchestration (NEW - Cursor AI-like system)
+    public generateIntelligentContent = async (
+        { prompt, userContext }: {
+            prompt: string,
+            userContext?: {
+                name?: string;
+                role?: string;
+                industry?: string;
+                previousPosts?: string[];
+            }
+        },
         linkedinTokens: OAuthTokens
     ): Promise<CallToolResult> => {
         try {
@@ -704,105 +906,99 @@ export class Tools {
                 };
             }
 
-            // Check if GEMINI_API_KEY is configured
-            const geminiApiKey = process.env.GEMINI_API_KEY;
-            if (!geminiApiKey) {
-                throw new Error("GEMINI_API_KEY is not configured in the environment");
+            // Get user information for context
+            const userInfo = await this.getUserInfo(linkedinTokens);
+            const userData = JSON.parse(userInfo.content[0].text);
+
+            // Enhanced user context
+            const enhancedContext = {
+                name: userData.firstName || userContext?.name || 'User',
+                role: userContext?.role,
+                industry: userContext?.industry,
+                previousPosts: userContext?.previousPosts || []
+            };
+
+            console.log("🧠 Using AI Orchestration for intelligent content generation...");
+
+            // Use AI Orchestrator for intelligent processing
+            const orchestrationResult = await this.aiOrchestrator.processContent(prompt, enhancedContext);
+
+            console.log("✅ AI Orchestration completed:", {
+                storyType: orchestrationResult.classification.storyType,
+                confidence: orchestrationResult.confidence,
+                modelUsed: orchestrationResult.metadata.modelUsed,
+                processingTime: orchestrationResult.metadata.processingTime,
+                optimizations: orchestrationResult.metadata.optimizations
+            });
+
+            // Return the intelligently generated content with metadata
+            return {
+                content: [{
+                    type: "text",
+                    text: orchestrationResult.generatedContent
+                }],
+                isError: false
+            };
+
+        } catch (error: any) {
+            console.error('AI Orchestration error:', error);
+
+            // Fallback to traditional generation
+            console.log("🔄 Falling back to traditional content generation...");
+            return this.generateTextContent({ prompt, storyType: 'journey' }, linkedinTokens);
+        }
+    }
+
+    // Generate enhanced LinkedIn post content from text using Gemini 2.0 Flash
+    public generateTextContent = async (
+        { prompt, storyType = 'journey' }: { prompt: string, storyType?: string },
+        linkedinTokens: OAuthTokens
+    ): Promise<CallToolResult> => {
+        try {
+            // Validate prompt content first
+            const validation = this.validatePromptContent(prompt);
+            if (!validation.isValid) {
+                return {
+                    isError: true,
+                    content: [{
+                        type: "text",
+                        text: `Content validation failed: ${validation.reason}\n\nPlease provide professional, appropriate content suitable for LinkedIn networking.`
+                    }]
+                };
             }
 
-            // Get user information to personalize the prompt
+            // Get user information to personalize the context
             const userInfoResult = await this.getUserInfo(linkedinTokens);
-            let userName = "professional";
+            let enhancedContext = {
+                name: 'professional'
+            };
 
             if (!userInfoResult.isError) {
                 try {
                     const userInfo = JSON.parse(userInfoResult.content[0].text);
-                    userName = `${userInfo.firstName} ${userInfo.lastName}`;
+                    enhancedContext.name = `${userInfo.firstName} ${userInfo.lastName}`;
                 } catch (e) {
-                    console.log("Error parsing user info, using default prompt");
+                    console.log("Error parsing user info, using default context");
                 }
             }
 
-            // Enhanced professional prompt for text-only content
-            const enhancedPrompt = `
-You are writing a LinkedIn post directly. Do not include any introductory text, explanations, or meta-commentary.
+            console.log("🧠 Using AI Orchestration for intelligent text content generation...");
 
-Transform this topic into a natural LinkedIn post: ${prompt}
-
-Write for ${userName} using these guidelines:
-
-CONTENT REQUIREMENTS:
-- Professional yet conversational tone that sounds natural on LinkedIn
-- 800-1200 characters for optimal engagement
-- Start immediately with engaging content - no introductions or explanations
-- Clear value proposition that resonates with professionals
-- Industry-relevant insights that demonstrate expertise
-
-STRUCTURE:
-- Open with an attention-grabbing first line that hooks readers immediately
-- 2-3 short, scannable paragraphs (1-2 sentences each)
-- End with an engaging question or call-to-action to drive comments
-- Include 3-5 relevant professional hashtags at the end
-
-FORMATTING:
-- Use single line breaks between paragraphs for mobile readability
-- Minimal use of bold text (only for 1-2 key phrases maximum)
-- Include 1-2 relevant emojis sparingly for visual appeal
-- Keep paragraphs very short for easy scanning
-
-ABSOLUTELY FORBIDDEN - DO NOT INCLUDE:
-- Any introductory phrases like "Here's a LinkedIn post", "Okay, here's", "Draft for", etc.
-- Subject lines or email-style headers
-- Meta-commentary about the post or guidelines
-- Explanatory text before or after the post
-- Placeholder text in brackets like [company name], [industry], [link]
-- Separators like "---" or "***"
-
-IMPORTANT: Start your response immediately with the first word of the LinkedIn post content. No preamble, no explanation, just the post itself.
-            `;
-
-            console.log("Calling Gemini 2.0 Flash for text content generation...");
-
-            // Call Gemini 2.0 Flash API for enhanced text content creation
-            const response = await axios.post(
-                'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-                {
-                    contents: [
-                        {
-                            parts: [
-                                { text: enhancedPrompt }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        temperature: 0.8,
-                        maxOutputTokens: 1000,
-                        topP: 0.9,
-                        topK: 40
-                    }
-                },
-                {
-                    params: { key: geminiApiKey },
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 20000 // 20 second timeout for text processing
-                }
+            // Use AI Orchestrator for intelligent text processing
+            const orchestrationResult = await this.aiOrchestrator.processContent(
+                prompt,
+                enhancedContext
             );
 
-            // Validate and extract the response
-            if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
-                throw new Error("Invalid response from Gemini API: Missing candidates");
-            }
+            console.log("✅ AI Orchestration completed for text content:", {
+                storyType: orchestrationResult.classification.storyType,
+                confidence: orchestrationResult.confidence,
+                modelUsed: orchestrationResult.metadata.modelUsed,
+                processingTime: orchestrationResult.metadata.processingTime,
+                optimizations: orchestrationResult.metadata.optimizations
+            });
 
-            if (!response.data.candidates[0].content || !response.data.candidates[0].content.parts) {
-                throw new Error("Invalid response from Gemini API: Missing content");
-            }
-
-            const generatedContent = response.data.candidates[0].content.parts[0].text;
-            if (!generatedContent) {
-                throw new Error("Gemini API returned empty content");
-            }
-
-            console.log("Successfully generated enhanced text content with Gemini 2.0 Flash");
+            const generatedContent = orchestrationResult.generatedContent;
 
             return {
                 content: [
@@ -858,122 +1054,47 @@ IMPORTANT: Start your response immediately with the first word of the LinkedIn p
                 };
             }
 
-            // Check if GEMINI_API_KEY is configured
-            const geminiApiKey = process.env.GEMINI_API_KEY;
-            if (!geminiApiKey) {
-                throw new Error("GEMINI_API_KEY is not configured in the environment");
-            }
-
-            // Get user information to personalize the prompt
-            const userInfoResult = await this.getUserInfo(linkedinTokens);
-            let userName = "professional";
-
-            if (!userInfoResult.isError) {
-                try {
-                    const userInfo = JSON.parse(userInfoResult.content[0].text);
-                    userName = `${userInfo.firstName} ${userInfo.lastName}`;
-                } catch (e) {
-                    console.log("Error parsing user info, using default prompt");
-                }
-            }
-
             // Validate image data
             if (!imageBase64 || imageBase64.length < 100) {
                 throw new Error("Invalid image data provided");
             }
 
-            // Enhanced professional prompt for image analysis
-            const improvedPrompt = `
-You are writing a LinkedIn post directly. Do not include any introductory text, explanations, or meta-commentary.
+            // Get user information to personalize the context
+            const imageUserInfoResult = await this.getUserInfo(linkedinTokens);
+            let enhancedContext = {
+                name: 'professional'
+            };
 
-Analyze the provided image and create a natural LinkedIn post based on these instructions: ${prompt}
-
-Write for ${userName} using these guidelines:
-
-CONTENT REQUIREMENTS:
-- Professional yet conversational tone that sounds natural on LinkedIn
-- 800-1200 characters for optimal engagement
-- Start immediately with engaging content - no introductions or explanations
-- Seamlessly integrate image insights with the provided instructions
-- Industry-relevant insights that demonstrate expertise
-
-STRUCTURE:
-- Open with an attention-grabbing first line that hooks readers immediately
-- 2-3 short, scannable paragraphs (1-2 sentences each) connecting image to professional insights
-- End with an engaging question or call-to-action to drive comments
-- Include 3-5 relevant professional hashtags at the end
-
-FORMATTING:
-- Use single line breaks between paragraphs for mobile readability
-- Minimal use of bold text (only for 1-2 key phrases maximum)
-- Include 1-2 relevant emojis sparingly for visual appeal
-- Keep paragraphs very short for easy scanning
-
-ABSOLUTELY FORBIDDEN - DO NOT INCLUDE:
-- Any introductory phrases like "Here's a LinkedIn post", "Okay, here's", "Draft for", etc.
-- Subject lines or email-style headers
-- Meta-commentary about the post or guidelines
-- Explanatory text before or after the post
-- Placeholder text in brackets like [company name], [industry], [link to website], [mention industry/niche]
-- Phrases like "Learn more at [website]" or "Register at [link]"
-- Any text in square brackets [ ]
-- Separators like "---" or "***"
-
-IMPORTANT: Start your response immediately with the first word of the LinkedIn post content. No preamble, no explanation, just the post itself.
-            `;
-
-            console.log("Calling Gemma-3-27b-it for image analysis...");
-            console.log("Image type:", mimeType);
-            console.log("Image data length:", imageBase64.length);
+            if (!imageUserInfoResult.isError) {
+                try {
+                    const userInfo = JSON.parse(imageUserInfoResult.content[0].text);
+                    enhancedContext.name = `${userInfo.firstName} ${userInfo.lastName}`;
+                } catch (e) {
+                    console.log("Error parsing user info, using default context");
+                }
+            }
 
             // Format the image data properly - ensure it doesn't include the data:image prefix
             const cleanedImageData = imageBase64.replace(/^data:image\/[a-z]+;base64,/, '');
 
-            // Call Gemini API with Gemma-3-27b-it model for image analysis and content creation
-            const response = await axios.post(
-                'https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent',
-                {
-                    contents: [
-                        {
-                            parts: [
-                                { text: improvedPrompt },
-                                {
-                                    inline_data: {
-                                        mime_type: mimeType,
-                                        data: cleanedImageData
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    generationConfig: {
-                        temperature: 0.7,
-                        maxOutputTokens: 1000,
-                        topP: 0.9
-                    }
-                },
-                {
-                    params: { key: geminiApiKey },
-                    headers: { 'Content-Type': 'application/json' },
-                    timeout: 30000 // 30 second timeout for image processing
-                }
+            console.log("🧠 Using AI Orchestration for intelligent image content generation...");
+
+            // Use AI Orchestrator for intelligent image processing
+            const orchestrationResult = await this.aiOrchestrator.processImageContent(
+                prompt,
+                { mimeType, data: cleanedImageData },
+                enhancedContext
             );
 
-            // Validate and extract the response
-            if (!response.data || !response.data.candidates || !response.data.candidates[0]) {
-                throw new Error("Invalid response from Gemma API: Missing candidates");
-            }
+            console.log("✅ AI Orchestration completed for image content:", {
+                storyType: orchestrationResult.classification.storyType,
+                confidence: orchestrationResult.confidence,
+                modelUsed: orchestrationResult.metadata.modelUsed,
+                processingTime: orchestrationResult.metadata.processingTime,
+                optimizations: orchestrationResult.metadata.optimizations
+            });
 
-            if (!response.data.candidates[0].content || !response.data.candidates[0].content.parts) {
-                throw new Error("Invalid response from Gemma API: Missing content");
-            }
-
-            const generatedContent = response.data.candidates[0].content.parts[0].text;
-            if (!generatedContent) {
-                throw new Error("Gemma API returned empty content");
-            }
-
-            console.log("Successfully generated content with Gemma-3-27b-it");
+            const generatedContent = orchestrationResult.generatedContent;
 
             return {
                 content: [
@@ -1215,6 +1336,7 @@ ABSOLUTELY FORBIDDEN - DO NOT INCLUDE:
 - Phrases like "Learn more at [website]" or "Register at [link]"
 - Any text in square brackets [ ]
 - Separators like "---" or "***"
+- HTML tags like <br>, <p>, <div>, or any HTML markup (use plain text only)
 
 IMPORTANT: Start your response immediately with the first word of the LinkedIn post content. No preamble, no explanation, just the post itself.
 `;

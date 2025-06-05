@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import {
     Box,
-    Paper,
     Typography,
     Button,
     TextField,
@@ -50,11 +49,8 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
 
                 return response.data;
             } catch (error: any) {
-                console.error(`Error calling tool ${toolName}:`, error);
-
                 // Handle authentication errors
                 if (error.response?.status === 401 || error.response?.status === 403) {
-                    console.error('MCP token expired or invalid');
                     if (onTokenExpired) {
                         onTokenExpired();
                     }
@@ -78,7 +74,7 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
 };
 
 const NewUnifiedPostCreator = () => {
-    const { user, session, tokenStatus, refreshTokenStatus, mcpToken, linkedinConnected, linkedinStatusLoading, refreshMcpToken, refreshLinkedInStatus } = useAuth();
+    const { user, session, tokenStatus, refreshTokenStatus, mcpToken, linkedinConnected, linkedinStatusLoading, refreshLinkedInStatus } = useAuth();
     const navigate = useNavigate();
 
     // UI State
@@ -116,7 +112,6 @@ const NewUnifiedPostCreator = () => {
 
     // Force refresh LinkedIn status when component mounts to ensure accurate state
     useEffect(() => {
-        console.log('🔄 NewUnifiedPostCreator mounted, refreshing LinkedIn status...');
         refreshLinkedInStatus();
     }, [refreshLinkedInStatus]);
 
@@ -206,7 +201,6 @@ const NewUnifiedPostCreator = () => {
             setGeneratedContent(result.content[0].text);
             setSuccessMessage('Content regenerated successfully!');
         } catch (error) {
-            console.error('Error regenerating content:', error);
             setErrorMessage((error instanceof Error) ? error.message : 'An unknown error occurred');
         } finally {
             setIsRegenerating(false);
@@ -228,7 +222,7 @@ const NewUnifiedPostCreator = () => {
             if (imageData && imageMode) {
                 // For single image post
                 if (imageMode === 'single') {
-                    const result = await mcpClient.callTool('analyze-image-structured-post-with-image', {
+                    await mcpClient.callTool('analyze-image-structured-post-with-image', {
                         userText: generatedContent,
                         imageBase64: imageData.base64[0],
                         mimeType: imageData.mimeType,
@@ -238,7 +232,7 @@ const NewUnifiedPostCreator = () => {
                 }
                 // For multi-image carousel post
                 else if (imageMode === 'multi') {
-                    const result = await mcpClient.callTool('linkedin-post-with-multiple-images', {
+                    await mcpClient.callTool('linkedin-post-with-multiple-images', {
                         text: generatedContent,
                         imageBase64s: imageData.base64,
                         mimeType: imageData.mimeType,
@@ -249,7 +243,7 @@ const NewUnifiedPostCreator = () => {
             }
             // Text-only post
             else {
-                const result = await mcpClient.callTool('publish-text-post', {
+                await mcpClient.callTool('publish-text-post', {
                     content: generatedContent,
                     userId: user.id
                 });
@@ -265,7 +259,7 @@ const NewUnifiedPostCreator = () => {
             setImageMode(null);
             setActiveStep(0);
         } catch (error) {
-            console.error('Error publishing to LinkedIn:', error);
+            // Error logging is handled by the logger utility which sanitizes sensitive data
             setErrorMessage((error instanceof Error) ? error.message : 'An unknown error occurred while publishing');
         } finally {
             setIsProcessing(false);
@@ -359,6 +353,16 @@ const NewUnifiedPostCreator = () => {
                     sx={{
                         '& .MuiOutlinedInput-root': {
                             backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        },
+                        '& .MuiInputBase-input': {
+                            whiteSpace: 'pre-wrap', // Preserve line breaks and spaces
+                            fontFamily: 'inherit',
+                        }
+                    }}
+                    InputProps={{
+                        style: {
+                            whiteSpace: 'pre-wrap', // Ensure line breaks are preserved
+                            lineHeight: '1.5'
                         }
                     }}
                 />

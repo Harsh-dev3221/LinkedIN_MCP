@@ -28,7 +28,7 @@ const Header: React.FC<HeaderProps> = ({ onGetStarted }) => {
                             <Sparkles className="w-5 h-5 text-white" />
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-xl font-bold text-gray-900">Post AI</span>
+                            <span className="text-xl font-bold text-gray-900">PostWizz</span>
                             <span className="-mt-1 text-xs text-gray-500">LinkedIn Content Creator</span>
                         </div>
                     </div>
