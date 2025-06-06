@@ -1,6 +1,10 @@
 import axios from "axios";
 import Logger from "../utils/Logger.js";
 import { AIOrchestrator } from "../ai/AIOrchestrator.js";
+import { DraftTools } from "../tools/DraftTools.js";
+import { SchedulingTools } from "../tools/SchedulingTools.js";
+import { AnalyticsTools } from "../tools/AnalyticsTools.js";
+import { ActivityTools } from "../tools/ActivityTools.js";
 
 // Define CallToolResult interface since we can't import it
 interface CallToolContent {
@@ -35,8 +39,20 @@ export class Tools {
     // AI Orchestration system for intelligent content generation
     private aiOrchestrator: AIOrchestrator;
 
+    // New feature tool instances
+    public draftTools: DraftTools;
+    public schedulingTools: SchedulingTools;
+    public analyticsTools: AnalyticsTools;
+    public activityTools: ActivityTools;
+
     constructor() {
         this.aiOrchestrator = new AIOrchestrator();
+
+        // Initialize new feature tools
+        this.draftTools = new DraftTools();
+        this.schedulingTools = new SchedulingTools();
+        this.analyticsTools = new AnalyticsTools();
+        this.activityTools = new ActivityTools();
     }
 
     /**

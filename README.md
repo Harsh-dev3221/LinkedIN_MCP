@@ -396,6 +396,8 @@ POST /mcp                    # Universal MCP tool endpoint
 ```
 
 **Available MCP Tools:**
+
+**📝 Content Creation:**
 - `create-post`: Basic LinkedIn post creation with story type selection (0 tokens)
 - `create-journey-story`: Personal/professional journey narratives (0 tokens)
 - `create-technical-showcase`: Technical project and achievement stories (0 tokens)
@@ -404,6 +406,30 @@ POST /mcp                    # Universal MCP tool endpoint
 - `analyze-image-create-post`: AI-enhanced single post (5 tokens)
 - `linkedin-post-with-multiple-images`: Multi-image carousel (10 tokens)
 - `analyze-image-structured-post`: Advanced structured content generation
+
+**📋 Draft Management:**
+- `save-draft`: Save post content as draft for later editing
+- `get-drafts`: Retrieve all user drafts with pagination
+- `get-draft`: Get specific draft by ID
+- `update-draft`: Edit existing draft content and metadata
+- `delete-draft`: Permanently remove a draft
+
+**⏰ Post Scheduling:**
+- `schedule-post`: Schedule posts for future publishing
+- `get-scheduled-posts`: View all scheduled posts with status filtering
+- `get-scheduled-post`: Get detailed scheduled post information
+- `cancel-scheduled-post`: Cancel pending scheduled posts
+- `reschedule-post`: Change scheduling time for pending posts
+
+**📊 Analytics & Insights:**
+- `get-token-analytics`: Comprehensive token usage statistics
+- `get-token-usage-history`: Detailed token consumption history
+- `get-post-analytics`: Post performance and engagement metrics
+
+**📅 Activity Tracking:**
+- `get-activity-summary`: User activity overview and statistics
+- `get-activity-timeline`: Chronological activity feed
+- `get-content-calendar`: Monthly content calendar view
 
 ### 📊 **API Response Examples**
 

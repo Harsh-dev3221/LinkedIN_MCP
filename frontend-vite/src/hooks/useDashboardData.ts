@@ -119,7 +119,7 @@ export const useDashboardData = () => {
         if (user && mcpToken) {
             refreshAllData();
         }
-    }, [user, mcpToken, refreshAllData]);
+    }, [user, mcpToken]); // Remove refreshAllData from dependencies to prevent infinite loop
 
     return {
         weeklyStats,

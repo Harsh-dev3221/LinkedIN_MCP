@@ -507,7 +507,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             logger.debug('No MCP token, setting LinkedIn as disconnected');
             setLinkedinConnected(false);
         }
-    }, [mcpToken, checkLinkedInStatus]);
+    }, [mcpToken]); // Remove checkLinkedInStatus from dependencies to prevent infinite loop
 
     // Google OAuth sign in
     const signInWithGoogle = useCallback(async () => {

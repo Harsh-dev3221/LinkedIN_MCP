@@ -13,7 +13,9 @@ import { TransportsStore } from "./mcp/TransportsStore.js";
 import { UserService } from "./services/UserService.js";
 import { LinkedInTokenService } from "./services/LinkedInTokenService.js";
 import { tokenScheduler } from "./services/TokenScheduler.js";
+import { postScheduler } from "./services/PostScheduler.js";
 import { TOKEN_COSTS } from "./database/supabase.js";
+import { OverdueManagementTools } from "./tools/OverdueManagementTools.js";
 import userRoutes from "./routes/users.js";
 
 // Simple MCP Server implementation
@@ -142,6 +144,7 @@ const server = new MCPServer(oauthProvider);
 
 // Initialize tools
 const tools = new Tools();
+const overdueManagementTools = new OverdueManagementTools();
 
 // API Routes
 app.use('/api/users', userRoutes);
@@ -823,6 +826,489 @@ server.tool(
     }
 );
 
+// ==================== DRAFT MANAGEMENT TOOLS ====================
+
+// Register save-draft tool
+server.tool(
+    "save-draft",
+    "Save a post as draft for later editing or publishing",
+    {
+        userId: z.string(),
+        title: z.string().optional(),
+        content: z.string(),
+        postType: z.enum(['basic', 'single', 'multiple']).optional(),
+        tags: z.array(z.string()).optional()
+    },
+    async ({ userId, title, content, postType, tags }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.draftTools.saveDraft({ userId, title, content, postType, tags });
+    }
+);
+
+// Register get-drafts tool
+server.tool(
+    "get-drafts",
+    "Get all drafts for the authenticated user",
+    {
+        userId: z.string(),
+        limit: z.number().optional(),
+        offset: z.number().optional()
+    },
+    async ({ userId, limit, offset }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.draftTools.getDrafts({ userId, limit, offset });
+    }
+);
+
+// Register get-draft tool
+server.tool(
+    "get-draft",
+    "Get a specific draft by ID",
+    {
+        userId: z.string(),
+        draftId: z.string()
+    },
+    async ({ userId, draftId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.draftTools.getDraft({ userId, draftId });
+    }
+);
+
+// Register update-draft tool
+server.tool(
+    "update-draft",
+    "Update an existing draft",
+    {
+        userId: z.string(),
+        draftId: z.string(),
+        title: z.string().optional(),
+        content: z.string().optional(),
+        postType: z.enum(['basic', 'single', 'multiple']).optional(),
+        tags: z.array(z.string()).optional()
+    },
+    async ({ userId, draftId, title, content, postType, tags }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.draftTools.updateDraft({ userId, draftId, title, content, postType, tags });
+    }
+);
+
+// Register delete-draft tool
+server.tool(
+    "delete-draft",
+    "Delete a draft permanently",
+    {
+        userId: z.string(),
+        draftId: z.string()
+    },
+    async ({ userId, draftId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.draftTools.deleteDraft({ userId, draftId });
+    }
+);
+
+// ==================== POST SCHEDULING TOOLS ====================
+
+// Register schedule-post tool
+server.tool(
+    "schedule-post",
+    "Schedule a post for future publishing",
+    {
+        userId: z.string(),
+        content: z.string(),
+        scheduledTime: z.string(), // ISO string
+        postType: z.enum(['basic', 'single', 'multiple']).optional()
+    },
+    async ({ userId, content, scheduledTime, postType }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.schedulingTools.schedulePost({ userId, content, scheduledTime, postType });
+    }
+);
+
+// Register get-scheduled-posts tool
+server.tool(
+    "get-scheduled-posts",
+    "Get all scheduled posts for the authenticated user",
+    {
+        userId: z.string(),
+        status: z.enum(['pending', 'published', 'failed', 'cancelled']).optional(),
+        limit: z.number().optional(),
+        offset: z.number().optional()
+    },
+    async ({ userId, status, limit, offset }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.schedulingTools.getScheduledPosts({ userId, status, limit, offset });
+    }
+);
+
+// Register get-scheduled-post tool
+server.tool(
+    "get-scheduled-post",
+    "Get a specific scheduled post by ID",
+    {
+        userId: z.string(),
+        scheduledPostId: z.string()
+    },
+    async ({ userId, scheduledPostId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.schedulingTools.getScheduledPost({ userId, scheduledPostId });
+    }
+);
+
+// Register cancel-scheduled-post tool
+server.tool(
+    "cancel-scheduled-post",
+    "Cancel a pending scheduled post",
+    {
+        userId: z.string(),
+        scheduledPostId: z.string()
+    },
+    async ({ userId, scheduledPostId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.schedulingTools.cancelScheduledPost({ userId, scheduledPostId });
+    }
+);
+
+// Register reschedule-post tool
+server.tool(
+    "reschedule-post",
+    "Reschedule a pending or failed post",
+    {
+        userId: z.string(),
+        scheduledPostId: z.string(),
+        newScheduledTime: z.string() // ISO string
+    },
+    async ({ userId, scheduledPostId, newScheduledTime }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.schedulingTools.reschedulePost({ userId, scheduledPostId, newScheduledTime });
+    }
+);
+
+// ==================== ANALYTICS TOOLS ====================
+
+// Register get-token-analytics tool
+server.tool(
+    "get-token-analytics",
+    "Get comprehensive token usage analytics and statistics",
+    {
+        userId: z.string(),
+        timeframe: z.enum(['7d', '30d', '90d', 'all']).optional()
+    },
+    async ({ userId, timeframe }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.analyticsTools.getTokenAnalytics({ userId, timeframe });
+    }
+);
+
+// Register get-token-usage-history tool
+server.tool(
+    "get-token-usage-history",
+    "Get detailed token usage history with pagination",
+    {
+        userId: z.string(),
+        limit: z.number().optional(),
+        offset: z.number().optional(),
+        actionType: z.enum(['basic_post', 'single_post', 'multiple_post']).optional()
+    },
+    async ({ userId, limit, offset, actionType }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.analyticsTools.getTokenUsageHistory({ userId, limit, offset, actionType });
+    }
+);
+
+// Register get-post-analytics tool
+server.tool(
+    "get-post-analytics",
+    "Get post performance analytics and statistics",
+    {
+        userId: z.string(),
+        timeframe: z.enum(['7d', '30d', '90d', 'all']).optional()
+    },
+    async ({ userId, timeframe }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.analyticsTools.getPostAnalytics({ userId, timeframe });
+    }
+);
+
+// ==================== ACTIVITY TRACKING TOOLS ====================
+
+// Register get-activity-summary tool
+server.tool(
+    "get-activity-summary",
+    "Get comprehensive user activity summary and statistics",
+    {
+        userId: z.string(),
+        timeframe: z.enum(['7d', '30d', '90d', 'all']).optional()
+    },
+    async ({ userId, timeframe }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.activityTools.getActivitySummary({ userId, timeframe });
+    }
+);
+
+// Register get-activity-timeline tool
+server.tool(
+    "get-activity-timeline",
+    "Get chronological activity timeline with pagination",
+    {
+        userId: z.string(),
+        limit: z.number().optional(),
+        offset: z.number().optional()
+    },
+    async ({ userId, limit, offset }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.activityTools.getActivityTimeline({ userId, limit, offset });
+    }
+);
+
+// Register get-content-calendar tool
+server.tool(
+    "get-content-calendar",
+    "Get content calendar view for a specific month",
+    {
+        userId: z.string(),
+        month: z.number().optional(), // 1-12
+        year: z.number().optional()   // e.g., 2024
+    },
+    async ({ userId, month, year }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.activityTools.getContentCalendar({ userId, month, year });
+    }
+);
+
+// ==================== OVERDUE MANAGEMENT TOOLS ====================
+
+// Register get-overdue-analysis tool
+server.tool(
+    "get-overdue-analysis",
+    "Analyze overdue scheduled posts and get comprehensive status report",
+    {
+        userId: z.string()
+    },
+    async ({ userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return overdueManagementTools.getOverdueAnalysis({ userId });
+    }
+);
+
+// Register reschedule-overdue-posts tool
+server.tool(
+    "reschedule-overdue-posts",
+    "Reschedule all overdue posts to future times",
+    {
+        userId: z.string(),
+        hoursFromNow: z.number().optional()
+    },
+    async ({ userId, hoursFromNow }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return overdueManagementTools.rescheduleOverduePosts({ userId, hoursFromNow });
+    }
+);
+
+// Register mark-critically-overdue-as-failed tool
+server.tool(
+    "mark-critically-overdue-as-failed",
+    "Mark all critically overdue posts (>7 days) as failed",
+    {
+        userId: z.string()
+    },
+    async ({ userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return overdueManagementTools.markCriticallyOverdueAsFailed({ userId });
+    }
+);
+
+// Register trigger-post-scheduler tool (for testing)
+server.tool(
+    "trigger-post-scheduler",
+    "Manually trigger the post scheduler to check and publish overdue posts",
+    {
+        userId: z.string().optional()
+    },
+    async ({ userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        try {
+            console.log('🔧 Manual trigger: Running post scheduler check...');
+            await postScheduler.triggerCheck();
+
+            return {
+                content: [{
+                    type: "text",
+                    text: "✅ Post scheduler triggered successfully! Check server logs for publishing activity."
+                }]
+            };
+        } catch (error) {
+            console.error('Error triggering post scheduler:', error);
+            return {
+                isError: true,
+                content: [{
+                    type: "text",
+                    text: `❌ Failed to trigger post scheduler: ${error instanceof Error ? error.message : 'Unknown error'}`
+                }]
+            };
+        }
+    }
+);
+
 // Setup OAuth routes
 app.get("/oauth/authorize", (req, res) => {
     const clientId = req.query.client_id as string;
@@ -995,10 +1481,19 @@ app.listen(PORT, () => {
     // Start the token scheduler
     tokenScheduler.start();
 
+    // Start the post scheduler
+    postScheduler.start();
+
     console.log('LinkedIn Post Creator MCP Server initialized successfully');
     console.log('Features enabled:');
     console.log('- User authentication and management');
     console.log('- Token-based usage tracking');
     console.log('- Daily token refresh (50 tokens/day)');
     console.log('- Rate limiting and security');
+    console.log('- Draft management (save, edit, delete drafts)');
+    console.log('- Post scheduling (schedule for later publishing)');
+    console.log('- Automatic overdue post management (smart publishing)');
+    console.log('- Token usage analytics (comprehensive statistics)');
+    console.log('- Activity tracking (timeline and calendar views)');
+    console.log('- Post history and performance analytics');
 });

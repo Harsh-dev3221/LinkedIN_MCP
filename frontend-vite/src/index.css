@@ -23,3 +23,21 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: #9ca3af;
 }
+
+/* LinkedIn button styles */
+.btn-linkedin {
+    background-color: #004182;
+    border-color: #004182;
+    color: white;
+    transition: all 0.2s ease-in-out;
+}
+
+.btn-linkedin:hover:not(:disabled) {
+    background-color: #003366;
+    border-color: #003366;
+}
+
+.btn-linkedin:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

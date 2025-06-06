@@ -10,7 +10,8 @@ import {
     Brain,
     Rocket,
     Shield,
-    Globe
+    Globe,
+    Zap
 } from 'lucide-react';
 
 const FeaturesSection: React.FC = () => {
@@ -19,50 +20,51 @@ const FeaturesSection: React.FC = () => {
             icon: Brain,
             title: "AI-Powered Content Generation",
             description: "Transform your ideas into engaging LinkedIn posts with advanced AI that understands professional tone and industry best practices.",
-            color: "linkedin"
-        },
-        {
-            icon: TrendingUp,
-            title: "Engagement Optimization",
-            description: "Boost your post performance with AI-driven insights that maximize likes, comments, and shares for better reach.",
-            color: "orange"
-        },
-        {
-            icon: Target,
-            title: "Audience Targeting",
-            description: "Create content tailored to your specific audience with intelligent targeting that resonates with your professional network.",
-            color: "linkedin"
+            color: "linkedin",
+            isLive: true
         },
         {
             icon: Clock,
             title: "10x Faster Creation",
             description: "Generate professional LinkedIn content in seconds, not hours. Save time while maintaining quality and authenticity.",
-            color: "orange"
-        },
-        {
-            icon: BarChart3,
-            title: "Performance Analytics",
-            description: "Track your content performance with detailed analytics and insights to continuously improve your LinkedIn strategy.",
-            color: "linkedin"
+            color: "orange",
+            isLive: true
         },
         {
             icon: MessageSquare,
             title: "Multi-Format Support",
-            description: "Create various content types including posts, articles, polls, and carousels - all optimized for LinkedIn's algorithm.",
-            color: "orange"
+            description: "Create text posts, single image posts, and multi-image carousels - all optimized for LinkedIn publishing.",
+            color: "linkedin",
+            isLive: true
+        },
+        {
+            icon: TrendingUp,
+            title: "Engagement Optimization",
+            description: "Advanced engagement analytics and optimization features to maximize your post performance.",
+            color: "orange",
+            isLive: false
+        },
+        {
+            icon: Target,
+            title: "Audience Targeting",
+            description: "Smart audience targeting and content personalization based on your professional network.",
+            color: "linkedin",
+            isLive: false
+        },
+        {
+            icon: BarChart3,
+            title: "Performance Analytics",
+            description: "Comprehensive analytics dashboard with detailed insights and performance tracking.",
+            color: "orange",
+            isLive: false
         }
     ];
 
     const benefits = [
         {
             icon: Rocket,
-            title: "Boost Your Personal Brand",
-            description: "Establish thought leadership and build a strong professional presence on LinkedIn."
-        },
-        {
-            icon: Users,
-            title: "Grow Your Network",
-            description: "Attract the right connections and expand your professional circle with engaging content."
+            title: "Save Time & Effort",
+            description: "Generate professional LinkedIn content in seconds instead of spending hours writing."
         },
         {
             icon: Shield,
@@ -70,9 +72,14 @@ const FeaturesSection: React.FC = () => {
             description: "AI-generated content that sounds like you, preserving your unique voice and style."
         },
         {
-            icon: Globe,
-            title: "Global Reach",
-            description: "Create content that resonates across different markets and professional cultures."
+            icon: Brain,
+            title: "Professional Quality",
+            description: "Advanced AI ensures your content meets LinkedIn's professional standards and best practices."
+        },
+        {
+            icon: Zap,
+            title: "Easy to Use",
+            description: "Simple interface that works - just add your ideas and let AI create engaging posts."
         }
     ];
 
@@ -84,9 +91,9 @@ const FeaturesSection: React.FC = () => {
             <div className="relative z-10 px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
                 {/* Section Header */}
                 <div className="mb-16 text-center">
-                    <div className="inline-flex items-center px-4 py-2 mb-6 space-x-2 border rounded-full bg-gradient-to-r from-linkedin-50 to-orange-50 border-linkedin-200/50">
-                        <Sparkles className="w-4 h-4 text-linkedin-600" />
-                        <span className="text-sm font-medium text-linkedin-700">Coming Soon Features</span>
+                    <div className="inline-flex items-center px-4 py-2 mb-6 space-x-2 border rounded-full bg-gradient-to-r from-orange-50 to-linkedin-50 border-orange-200/50">
+                        <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                        <span className="text-sm font-medium text-gray-700">🚀 Available Features</span>
                     </div>
                     <h2 className="mb-6 text-4xl font-bold text-gray-900 lg:text-5xl">
                         Built for the Future of
@@ -98,7 +105,7 @@ const FeaturesSection: React.FC = () => {
                         }}> LinkedIn Content</span>
                     </h2>
                     <p className="max-w-3xl mx-auto text-xl leading-relaxed text-gray-600">
-                        We're building the most advanced AI-powered LinkedIn content platform. Join our beta to get early access to these game-changing features.
+                        Create professional LinkedIn content with AI assistance. Core features are live in beta, with advanced analytics and targeting coming soon.
                     </p>
                 </div>
 
@@ -123,9 +130,17 @@ const FeaturesSection: React.FC = () => {
                                 </div>
                                 <h3 className="mb-4 text-xl font-bold text-gray-900">{feature.title}</h3>
                                 <p className="leading-relaxed text-gray-600">{feature.description}</p>
-                                <div className="inline-block px-3 py-1 mt-4 text-xs text-gray-500 rounded-full bg-gray-50">
-                                    Coming in Beta
-                                </div>
+                                {feature.isLive ? (
+                                    <div className="inline-flex items-center space-x-2 mt-4 bg-gradient-to-r from-orange-50 to-linkedin-50 border border-orange-200/50 rounded-full px-4 py-2">
+                                        <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
+                                        <span className="text-sm text-gray-700 font-medium">🚀 Live in Beta</span>
+                                    </div>
+                                ) : (
+                                    <div className="inline-flex items-center space-x-2 mt-4 bg-gradient-to-r from-gray-50 to-gray-100 border border-gray-200/50 rounded-full px-4 py-2">
+                                        <span className="w-2 h-2 bg-gray-400 rounded-full"></span>
+                                        <span className="text-sm text-gray-500 font-medium">Coming Soon</span>
+                                    </div>
+                                )}
                             </div>
                         );
                     })}
@@ -135,10 +150,10 @@ const FeaturesSection: React.FC = () => {
                 <div className="p-8 border-2 bg-gradient-to-br from-white/90 to-beige-50/90 backdrop-blur-sm rounded-3xl lg:p-12 border-gray-200/60 shadow-soft-lg">
                     <div className="mb-12 text-center">
                         <h3 className="mb-4 text-3xl font-bold text-gray-900 lg:text-4xl">
-                            Why Choose Post AI?
+                            Why Choose PostWizz?
                         </h3>
                         <p className="max-w-2xl mx-auto text-lg font-medium text-gray-700">
-                            Join our beta program and be among the first to experience the future of LinkedIn content creation.
+                            Simple, effective AI-powered LinkedIn content creation that actually works.
                         </p>
                     </div>
 

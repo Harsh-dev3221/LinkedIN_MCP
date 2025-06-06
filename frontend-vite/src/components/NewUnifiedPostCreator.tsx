@@ -19,10 +19,14 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import TokenIcon from '@mui/icons-material/Token';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import SaveIcon from '@mui/icons-material/Save';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import GradientBackground from './GradientBackground';
 import PostAI from './PostAI';
+import SchedulePostModal from './dashboard/SchedulePostModal';
+import SaveDraftModal from './dashboard/SaveDraftModal';
 import { useAuth } from '../contexts/AuthContext';
 import { TOKEN_COSTS } from '../lib/supabase';
 
@@ -91,6 +95,10 @@ const NewUnifiedPostCreator = () => {
     // Image state for publishing
     const [imageData, setImageData] = useState<{ base64: string[], mimeType: string } | null>(null);
     const [imageMode, setImageMode] = useState<'single' | 'multi' | null>(null);
+
+    // Modal states
+    const [showScheduleModal, setShowScheduleModal] = useState(false);
+    const [showSaveDraftModal, setShowSaveDraftModal] = useState(false);
 
     // Character count for LinkedIn posts
     const MAX_CHARS = 3000;
@@ -385,13 +393,31 @@ const NewUnifiedPostCreator = () => {
                 </Box>
             </Box>
 
-            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 2, mt: 3, flexWrap: 'wrap' }}>
                 <Button
                     variant="outlined"
                     onClick={handleReset}
                     disabled={isProcessing}
                 >
                     Start Over
+                </Button>
+                <Button
+                    variant="outlined"
+                    color="info"
+                    onClick={() => setShowSaveDraftModal(true)}
+                    disabled={isProcessing || charCount > MAX_CHARS}
+                    startIcon={<SaveIcon />}
+                >
+                    Save Draft
+                </Button>
+                <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => setShowScheduleModal(true)}
+                    disabled={isProcessing || charCount > MAX_CHARS}
+                    startIcon={<ScheduleIcon />}
+                >
+                    Schedule
                 </Button>
                 <Button
                     variant="contained"
@@ -528,6 +554,21 @@ const NewUnifiedPostCreator = () => {
             ) : (
                 renderContentPreview()
             )}
+
+            {/* Modals */}
+            <SchedulePostModal
+                isOpen={showScheduleModal}
+                onClose={() => setShowScheduleModal(false)}
+                initialContent={generatedContent}
+                initialPostType={imageMode === 'multi' ? 'multiple' : imageMode === 'single' ? 'single' : 'basic'}
+            />
+
+            <SaveDraftModal
+                isOpen={showSaveDraftModal}
+                onClose={() => setShowSaveDraftModal(false)}
+                initialContent={generatedContent}
+                initialPostType={imageMode === 'multi' ? 'multiple' : imageMode === 'single' ? 'single' : 'basic'}
+            />
         </Box>
     );
 };

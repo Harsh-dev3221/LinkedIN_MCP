@@ -62,9 +62,37 @@ CREATE TABLE IF NOT EXISTS posts (
     post_type VARCHAR(20) NOT NULL CHECK (post_type IN ('basic', 'single', 'multiple')),
     linkedin_post_id VARCHAR(255),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    
+
     -- Constraints
     CHECK (tokens_used >= 0)
+);
+
+-- Drafts table - stores draft posts for later editing/publishing
+CREATE TABLE IF NOT EXISTS drafts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title VARCHAR(255),
+    content TEXT NOT NULL,
+    post_type VARCHAR(20) NOT NULL CHECK (post_type IN ('basic', 'single', 'multiple')),
+    tags TEXT[], -- Array of tags for categorization
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Scheduled posts table - stores posts scheduled for future publishing
+CREATE TABLE IF NOT EXISTS scheduled_posts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    post_type VARCHAR(20) NOT NULL CHECK (post_type IN ('basic', 'single', 'multiple')),
+    scheduled_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'published', 'failed', 'cancelled')),
+    linkedin_post_id VARCHAR(255), -- Set when published
+    error_message TEXT, -- Store error if publishing fails
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+
+    -- Note: Removed CHECK constraint to allow overdue posts to exist
 );
 
 -- Indexes for better performance
@@ -76,6 +104,11 @@ CREATE INDEX IF NOT EXISTS idx_token_usage_user_id ON token_usage_history(user_i
 CREATE INDEX IF NOT EXISTS idx_token_usage_timestamp ON token_usage_history(timestamp);
 CREATE INDEX IF NOT EXISTS idx_posts_user_id ON posts(user_id);
 CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at);
+CREATE INDEX IF NOT EXISTS idx_drafts_user_id ON drafts(user_id);
+CREATE INDEX IF NOT EXISTS idx_drafts_updated_at ON drafts(updated_at);
+CREATE INDEX IF NOT EXISTS idx_scheduled_posts_user_id ON scheduled_posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_posts_scheduled_time ON scheduled_posts(scheduled_time);
+CREATE INDEX IF NOT EXISTS idx_scheduled_posts_status ON scheduled_posts(status);
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -93,6 +126,14 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
 
 DROP TRIGGER IF EXISTS update_user_tokens_updated_at ON user_tokens;
 CREATE TRIGGER update_user_tokens_updated_at BEFORE UPDATE ON user_tokens
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_drafts_updated_at ON drafts;
+CREATE TRIGGER update_drafts_updated_at BEFORE UPDATE ON drafts
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_scheduled_posts_updated_at ON scheduled_posts;
+CREATE TRIGGER update_scheduled_posts_updated_at BEFORE UPDATE ON scheduled_posts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to refresh daily tokens
@@ -164,6 +205,8 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE token_usage_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE drafts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE scheduled_posts ENABLE ROW LEVEL SECURITY;
 
 -- Drop existing policies if they exist
 DROP POLICY IF EXISTS "Users can view own profile" ON users;
@@ -171,6 +214,8 @@ DROP POLICY IF EXISTS "Users can update own profile" ON users;
 DROP POLICY IF EXISTS "Users can view own tokens" ON user_tokens;
 DROP POLICY IF EXISTS "Users can view own usage history" ON token_usage_history;
 DROP POLICY IF EXISTS "Users can view own posts" ON posts;
+DROP POLICY IF EXISTS "Users can manage own drafts" ON drafts;
+DROP POLICY IF EXISTS "Users can manage own scheduled posts" ON scheduled_posts;
 
 -- Create RLS policies for authenticated users
 CREATE POLICY "Users can view own profile" ON users
@@ -188,6 +233,12 @@ CREATE POLICY "Users can view own usage history" ON token_usage_history
 CREATE POLICY "Users can view own posts" ON posts
     FOR SELECT USING (auth.uid()::text = user_id::text);
 
+CREATE POLICY "Users can manage own drafts" ON drafts
+    FOR ALL USING (auth.uid()::text = user_id::text);
+
+CREATE POLICY "Users can manage own scheduled posts" ON scheduled_posts
+    FOR ALL USING (auth.uid()::text = user_id::text);
+
 -- Allow service role to bypass RLS (for backend operations)
 -- Note: In Supabase, service role automatically bypasses RLS
 -- These policies are for explicit permission when needed
@@ -202,4 +253,10 @@ CREATE POLICY "Allow service role full access" ON token_usage_history
     FOR ALL USING (true);
 
 CREATE POLICY "Allow service role full access" ON posts
+    FOR ALL USING (true);
+
+CREATE POLICY "Allow service role full access" ON drafts
+    FOR ALL USING (true);
+
+CREATE POLICY "Allow service role full access" ON scheduled_posts
     FOR ALL USING (true);

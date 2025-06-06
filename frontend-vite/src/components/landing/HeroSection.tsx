@@ -40,29 +40,29 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
                             </span>
                             <br />
                             <span className="text-gray-900">
-                                Into Viral LinkedIn Posts
+                                Into Professional LinkedIn Posts
                             </span>
                         </h1>
 
                         {/* Subheadline */}
                         <p className="text-lg lg:text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl lg:max-w-none">
-                            Create engaging, professional LinkedIn content in seconds with our AI-powered platform.
-                            Boost your personal brand, increase engagement, and grow your professional network effortlessly.
+                            Create professional LinkedIn content in seconds with AI assistance.
+                            Save time while maintaining quality and authenticity in your posts.
                         </p>
 
                         {/* Key Benefits */}
                         <div className="flex flex-wrap gap-4 mb-8 justify-center lg:justify-start">
                             <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-soft">
                                 <TrendingUp className="w-4 h-4 text-linkedin-600" />
-                                <span className="text-sm font-medium text-gray-700">10x Faster Content Creation</span>
+                                <span className="text-sm font-medium text-gray-700">Fast Content Creation</span>
                             </div>
                             <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-soft">
                                 <Users className="w-4 h-4 text-orange-600" />
-                                <span className="text-sm font-medium text-gray-700">Higher Engagement Rates</span>
+                                <span className="text-sm font-medium text-gray-700">Professional Quality</span>
                             </div>
                             <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-soft">
                                 <Zap className="w-4 h-4 text-linkedin-600" />
-                                <span className="text-sm font-medium text-gray-700">SEO Optimized</span>
+                                <span className="text-sm font-medium text-gray-700">Easy to Use</span>
                             </div>
                         </div>
 
@@ -129,7 +129,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
                                         </div>
                                         <div>
                                             <h3 className="font-semibold text-gray-900">PostWizz Generator</h3>
-                                            <p className="text-sm text-gray-500">Creating your next viral post...</p>
+                                            <p className="text-sm text-gray-500">Creating professional content...</p>
                                         </div>
                                         {/* Orange trending icon */}
                                         <div className="ml-auto bg-orange-500 text-white p-2 rounded-xl">

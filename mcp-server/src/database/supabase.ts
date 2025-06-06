@@ -60,6 +60,36 @@ export interface Posts {
     created_at: string;
 }
 
+export interface Drafts {
+    id: string;
+    user_id: string;
+    title?: string;
+    content: string;
+    post_type: 'basic' | 'single' | 'multiple';
+    tags?: string[];
+    created_at: string;
+    updated_at: string;
+}
+
+export interface ScheduledPosts {
+    id: string;
+    user_id: string;
+    content: string;
+    post_type: 'basic' | 'single' | 'multiple';
+    scheduled_time: string;
+    status: 'pending' | 'published' | 'failed' | 'cancelled';
+    linkedin_post_id?: string;
+    error_message?: string;
+    published_at?: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export type PostType = 'basic' | 'single' | 'multiple';
+export type ActionType = 'basic_post' | 'single_post' | 'multiple_post';
+export type ScheduledPostStatus = 'pending' | 'published' | 'failed' | 'cancelled';
+export type ActivityType = 'post_published' | 'draft_created' | 'draft_updated' | 'post_scheduled' | 'scheduled_post_published' | 'scheduled_post_cancelled';
+
 // Token consumption constants
 export const TOKEN_COSTS = {
     BASIC_POST: 0,

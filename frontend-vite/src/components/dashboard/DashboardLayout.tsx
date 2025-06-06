@@ -2,6 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDashboardData } from '../../hooks/useDashboardData';
 import AnalyticsPage from '../analytics/AnalyticsPage';
+import ScheduledPostsCard from './ScheduledPostsCard';
+import SchedulePostModal from './SchedulePostModal';
+import ScheduledPostsPage from './ScheduledPostsPage';
+import DraftsCard from './DraftsCard';
 import { logger } from '../../utils/logger';
 import {
     Sparkles,
@@ -21,7 +25,8 @@ import {
     ChevronRight,
     Lock,
     PanelLeftClose,
-    PanelLeftOpen
+    PanelLeftOpen,
+    FileText
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -55,6 +60,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
     const [isRefreshingLinkedIn, setIsRefreshingLinkedIn] = useState(false);
     const [showToast, setShowToast] = useState(false);
     const [showAnalytics, setShowAnalytics] = useState(false);
+    const [showScheduleModal, setShowScheduleModal] = useState(false);
+    const [showScheduledPosts, setShowScheduledPosts] = useState(false);
 
     // Force refresh LinkedIn status when component mounts
     useEffect(() => {
@@ -165,17 +172,22 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
     ];
 
     const sidebarItems = [
-        { icon: BarChart3, label: 'Dashboard', active: true, locked: false },
-        { icon: Calendar, label: 'Schedule', active: false, locked: true },
-        { icon: Users, label: 'Audience', active: false, locked: true },
-        { icon: Activity, label: 'Analytics', active: false, locked: true },
-        { icon: Target, label: 'Goals', active: false, locked: true },
-        { icon: Settings, label: 'Settings', active: false, locked: true }
+        { icon: BarChart3, label: 'Dashboard', active: true, locked: false, action: null },
+        { icon: Calendar, label: 'Schedule', active: false, locked: false, action: () => setShowScheduleModal(true) },
+        { icon: FileText, label: 'Drafts', active: false, locked: true, action: null },
+        { icon: Users, label: 'Audience', active: false, locked: true, action: null },
+        { icon: Activity, label: 'Analytics', active: false, locked: true, action: null },
+        { icon: Target, label: 'Goals', active: false, locked: true, action: null },
+        { icon: Settings, label: 'Settings', active: false, locked: true, action: null }
     ];
 
     // Show analytics page if requested
     if (showAnalytics) {
         return <AnalyticsPage onBack={() => setShowAnalytics(false)} />;
+    }
+
+    if (showScheduledPosts) {
+        return <ScheduledPostsPage onBack={() => setShowScheduledPosts(false)} />;
     }
 
     return (
@@ -270,7 +282,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
                                 <button
                                     type="button"
                                     key={index}
-                                    onClick={item.locked ? handleComingSoonFeature : undefined}
+                                    onClick={item.locked ? handleComingSoonFeature : item.action || undefined}
                                     className={`w-full flex items-center rounded-xl transition-all duration-200 ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'justify-between px-3 py-3'
                                         } text-sm font-medium ${item.active
                                             ? 'bg-gradient-to-r from-linkedin-500 to-linkedin-600 text-white shadow-linkedin'
@@ -603,6 +615,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
                                     ))}
                                 </div>
                             </div>
+
+                            {/* Scheduled Posts */}
+                            <ScheduledPostsCard onViewAll={() => setShowScheduledPosts(true)} />
+
+                            {/* Drafts */}
+                            <DraftsCard onViewAll={() => {/* TODO: Add drafts page */ }} />
                         </div>
 
                         {/* Right Column - Quick Actions & Status */}
@@ -741,6 +759,12 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
                     </div>
                 </div>
             )}
+
+            {/* Schedule Post Modal */}
+            <SchedulePostModal
+                isOpen={showScheduleModal}
+                onClose={() => setShowScheduleModal(false)}
+            />
         </div>
     );
 };
