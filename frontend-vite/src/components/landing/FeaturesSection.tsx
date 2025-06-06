@@ -1,8 +1,6 @@
 import React from 'react';
 import {
-    Sparkles,
     TrendingUp,
-    Users,
     Target,
     Clock,
     BarChart3,
@@ -10,7 +8,6 @@ import {
     Brain,
     Rocket,
     Shield,
-    Globe,
     Zap
 } from 'lucide-react';
 

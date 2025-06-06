@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useScheduledPosts } from '../../hooks/useScheduledPosts';
 import SchedulePostModal from './SchedulePostModal';
 import {
@@ -23,11 +23,11 @@ interface ScheduledPostsPageProps {
 }
 
 const ScheduledPostsPage: React.FC<ScheduledPostsPageProps> = ({ onBack }) => {
-    const { scheduledPosts, loading, error, fetchScheduledPosts, cancelScheduledPost, reschedulePost } = useScheduledPosts();
+    const { scheduledPosts, loading, error, fetchScheduledPosts, cancelScheduledPost } = useScheduledPosts();
     const [showScheduleModal, setShowScheduleModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'published' | 'failed' | 'cancelled'>('all');
-    const [selectedPost, setSelectedPost] = useState<any>(null);
+
     const [showActionMenu, setShowActionMenu] = useState<string | null>(null);
 
     const getStatusIcon = (status: string) => {
@@ -108,14 +108,7 @@ const ScheduledPostsPage: React.FC<ScheduledPostsPageProps> = ({ onBack }) => {
         }
     };
 
-    const handleReschedulePost = async (postId: string, newTime: string) => {
-        try {
-            await reschedulePost(postId, newTime);
-            setShowActionMenu(null);
-        } catch (error) {
-            console.error('Failed to reschedule post:', error);
-        }
-    };
+
 
     // Filter posts based on search and status - memoized to prevent unnecessary re-calculations
     const filteredPosts = useMemo(() => {

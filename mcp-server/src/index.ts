@@ -93,6 +93,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Trust proxy for Render deployment (fixes rate limiting issue)
+app.set('trust proxy', 1);
+
 // Rate limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -1336,6 +1339,22 @@ app.get("/oauth/authorize", (req, res) => {
     );
 });
 
+// Supabase auth callback endpoint (for Google OAuth)
+app.get("/auth/callback", (req, res) => {
+    console.log('🔍 Supabase auth callback received:', {
+        query: req.query,
+        headers: req.headers.referer
+    });
+
+    // For Supabase OAuth, we just redirect back to frontend
+    // The frontend will handle the actual token processing
+    const redirectUrl = `${process.env.CORS_ALLOWED_ORIGIN}/auth/callback${req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : ''}`;
+
+    console.log('🔄 Redirecting to frontend:', redirectUrl);
+    return res.redirect(redirectUrl);
+});
+
+// LinkedIn OAuth callback endpoint
 app.get("/oauth/callback", (req, res) => {
     const code = req.query.code as string;
     const state = req.query.state as string;

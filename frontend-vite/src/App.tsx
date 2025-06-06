@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import { Analytics } from '@vercel/analytics/react';
 
 import { AuthProvider } from './contexts/AuthContext';
 import GradientBackground from './components/GradientBackground';
@@ -236,6 +237,7 @@ function App() {
           <AppContent />
         </AuthProvider>
       </Router>
+      <Analytics />
     </ThemeProvider>
   );
 }

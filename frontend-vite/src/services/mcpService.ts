@@ -1,11 +1,17 @@
 import axios from 'axios';
 
+// Validate environment variables
+const MCP_SERVER_URL = import.meta.env.VITE_MCP_SERVER_URL;
+if (!MCP_SERVER_URL) {
+    throw new Error('VITE_MCP_SERVER_URL environment variable is not set');
+}
+
 // MCP Client for API communication
 export const createMcpClient = (token: string, onTokenExpired?: () => void) => {
     return {
         callTool: async (toolName: string, params: any) => {
             try {
-                const response = await axios.post(`${import.meta.env.VITE_MCP_SERVER_URL}/mcp`, {
+                const response = await axios.post(`${MCP_SERVER_URL}/mcp`, {
                     type: "call-tool",
                     tool: toolName,
                     params
@@ -39,6 +45,16 @@ export const createMcpClient = (token: string, onTokenExpired?: () => void) => {
                 // Handle network errors
                 if (error.code === 'ECONNABORTED' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
                     throw new Error('Network error. Please check your connection and try again.');
+                }
+
+                // Handle server errors in production
+                if (error.response?.status >= 500) {
+                    throw new Error('Server error. Please try again later.');
+                }
+
+                // Log error details in development only
+                if (import.meta.env.DEV) {
+                    console.error('MCP Service Error:', error);
                 }
 
                 throw error;
