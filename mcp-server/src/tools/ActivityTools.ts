@@ -79,10 +79,29 @@ export class ActivityTools {
                 timeframe
             );
 
+            // Return structured JSON data
+            const activityData = {
+                success: true,
+                data: {
+                    timeframe: timeframe,
+                    timeframeText: stats.timeframeText,
+                    totalPosts: stats.totalPosts,
+                    postsByType: stats.postsByType,
+                    totalDrafts: stats.totalDrafts,
+                    totalScheduled: stats.totalScheduled,
+                    scheduledByStatus: stats.scheduledByStatus,
+                    totalTokensUsed: stats.totalTokensUsed,
+                    avgTokensPerAction: stats.avgTokensPerAction,
+                    totalActivities: stats.totalActivities,
+                    avgActivitiesPerDay: stats.avgActivitiesPerDay,
+                    weeklyStats: this.generateWeeklyStats(posts || [], timeframe)
+                }
+            };
+
             return {
                 content: [{
                     type: "text",
-                    text: this.formatActivitySummary(stats)
+                    text: JSON.stringify(activityData)
                 }]
             };
 
@@ -325,6 +344,49 @@ export class ActivityTools {
             avgTokensPerAction,
             totalActivities,
             avgActivitiesPerDay
+        };
+    }
+
+    /**
+     * Generate weekly statistics for dashboard
+     */
+    private generateWeeklyStats(posts: any[], timeframe: string) {
+        const oneWeekAgo = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000));
+        const thisWeekPosts = posts.filter(post =>
+            new Date(post.created_at) >= oneWeekAgo
+        );
+
+        // Generate daily stats for the week
+        const weekDays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const today = new Date();
+        const weeklyData = [];
+
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date(today);
+            date.setDate(today.getDate() - i);
+            const dayName = weekDays[date.getDay()];
+
+            const dayPosts = posts.filter(post => {
+                const postDate = new Date(post.created_at);
+                return postDate.toDateString() === date.toDateString();
+            });
+
+            weeklyData.push({
+                day: dayName,
+                posts: dayPosts.length,
+                engagement: Math.floor(Math.random() * 20) + 80 // Mock engagement for now
+            });
+        }
+
+        return {
+            thisWeekPosts: thisWeekPosts.length,
+            weeklyData: weeklyData,
+            recentActivity: posts.slice(0, 5).map(post => ({
+                type: 'post_published',
+                content: post.content.substring(0, 80) + (post.content.length > 80 ? '...' : ''),
+                date: post.created_at,
+                tokens_used: post.tokens_used
+            }))
         };
     }
 

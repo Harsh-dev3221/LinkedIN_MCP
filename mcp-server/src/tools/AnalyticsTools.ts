@@ -169,10 +169,24 @@ export class AnalyticsTools {
             }
 
             if (!posts || posts.length === 0) {
+                // Return structured JSON for empty data
+                const emptyData = {
+                    success: true,
+                    data: {
+                        totalPosts: 0,
+                        thisWeekPosts: 0,
+                        postsByType: {},
+                        totalTokensUsed: 0,
+                        avgTokensPerPost: 0,
+                        posts: [],
+                        timeframe: timeframe
+                    }
+                };
+
                 return {
                     content: [{
                         type: "text",
-                        text: `📈 No posts found for the selected timeframe (${timeframe}). Create some posts to see your analytics!`
+                        text: JSON.stringify(emptyData)
                     }]
                 };
             }
@@ -197,22 +211,41 @@ export class AnalyticsTools {
             const mostActiveDay = Object.entries(postsByDay)
                 .sort(([, a], [, b]) => (b as number) - (a as number))[0];
 
-            // Recent posts
-            const recentPosts = posts.slice(0, 5).map((post, index) => {
-                const preview = post.content.substring(0, 100);
-                return `${index + 1}. **${post.post_type.toUpperCase()}** (${post.tokens_used} tokens)
-   Date: ${new Date(post.created_at).toLocaleDateString()}
-   Preview: ${preview}${post.content.length > 100 ? '...' : ''}`;
-            }).join('\n\n');
+            // Calculate this week's posts
+            const oneWeekAgo = new Date(Date.now() - (7 * 24 * 60 * 60 * 1000));
+            const thisWeekPosts = posts.filter(post =>
+                new Date(post.created_at) >= oneWeekAgo
+            ).length;
 
-            const typeBreakdown = Object.entries(postsByType)
-                .map(([type, count]) => `   ${type}: ${count} posts`)
-                .join('\n');
+            // Format posts for frontend
+            const formattedPosts = posts.slice(0, 10).map(post => ({
+                id: post.id,
+                content: post.content.substring(0, 100) + (post.content.length > 100 ? '...' : ''),
+                post_type: post.post_type,
+                tokens_used: post.tokens_used,
+                created_at: post.created_at,
+                linkedin_post_id: post.linkedin_post_id
+            }));
+
+            // Return structured JSON data
+            const analyticsData = {
+                success: true,
+                data: {
+                    totalPosts,
+                    thisWeekPosts,
+                    postsByType,
+                    totalTokensUsed,
+                    avgTokensPerPost,
+                    mostActiveDay: mostActiveDay ? { date: mostActiveDay[0], count: mostActiveDay[1] } : null,
+                    posts: formattedPosts,
+                    timeframe: timeframe
+                }
+            };
 
             return {
                 content: [{
                     type: "text",
-                    text: `📈 **Post Analytics** (${timeframe})\n\n**Overview:**\n📝 Total Posts: ${totalPosts}\n🎯 Tokens Used: ${totalTokensUsed}\n⚡ Avg Tokens/Post: ${avgTokensPerPost}\n📅 Most Active Day: ${mostActiveDay ? `${mostActiveDay[0]} (${mostActiveDay[1]} posts)` : 'N/A'}\n\n**Posts by Type:**\n${typeBreakdown}\n\n**Recent Posts:**\n${recentPosts}\n\n💡 Keep creating great content!`
+                    text: JSON.stringify(analyticsData)
                 }]
             };
         } catch (error) {
@@ -269,28 +302,29 @@ export class AnalyticsTools {
 
         const currentStatus = `**Current Token Status:**\n💰 Daily Allowance: ${tokenStatus.daily_tokens}\n⚡ Used Today: ${tokenStatus.tokens_used_today}\n🔋 Remaining Today: ${tokenStatus.daily_tokens - tokenStatus.tokens_used_today}\n📊 Total Used: ${tokenStatus.total_tokens_used}\n🗓️ Last Refresh: ${new Date(tokenStatus.last_refresh_date).toLocaleDateString()}`;
 
-        let usageBreakdown = '';
-        if (usageStats.length > 0) {
-            const totalUsage = usageStats.reduce((sum, stat) => sum + (stat.total_tokens || 0), 0);
-            usageBreakdown = `\n\n**Usage Breakdown (${timeframeText}):**\n📈 Total Tokens Used: ${totalUsage}\n\n` +
-                usageStats.map(stat => {
-                    const actionEmoji: Record<string, string> = {
-                        'basic_post': '📝',
-                        'single_post': '🖼️',
-                        'multiple_post': '🎠'
-                    };
-                    const emoji = actionEmoji[stat.action_type] || '📊';
+        // Calculate totals
+        const totalUsage = usageStats.reduce((sum, stat) => sum + (stat.total_tokens || 0), 0);
 
-                    return `${emoji} ${stat.action_type.replace('_', ' ').toUpperCase()}:\n   Count: ${stat.usage_count || 0}\n   Tokens: ${stat.total_tokens || 0}\n   Avg: ${stat.avg_tokens || 0}`;
-                }).join('\n\n');
-        } else {
-            usageBreakdown = `\n\n**Usage Breakdown (${timeframeText}):**\n📊 No usage data found for this timeframe.`;
-        }
+        // Return structured JSON data
+        const analyticsData = {
+            success: true,
+            data: {
+                daily_tokens: tokenStatus.daily_tokens,
+                tokens_used_today: tokenStatus.tokens_used_today,
+                remaining_today: tokenStatus.daily_tokens - tokenStatus.tokens_used_today,
+                total_tokens_used: tokenStatus.total_tokens_used,
+                last_refresh_date: tokenStatus.last_refresh_date,
+                timeframe: timeframe,
+                timeframeText: timeframeText,
+                totalUsageInTimeframe: totalUsage,
+                usageStats: usageStats
+            }
+        };
 
         return {
             content: [{
                 type: "text",
-                text: `📊 **Token Analytics**\n\n${currentStatus}${usageBreakdown}\n\n💡 Tokens refresh daily at midnight (Indian timezone).`
+                text: JSON.stringify(analyticsData)
             }]
         };
     }
