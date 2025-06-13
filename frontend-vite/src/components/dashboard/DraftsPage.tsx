@@ -10,11 +10,8 @@ import {
     RefreshCw,
     Search,
     Filter,
-    Edit3,
     Trash2,
     Eye,
-    Send,
-    Calendar,
     Tag,
     MoreVertical,
     AlertCircle,
@@ -66,7 +63,7 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
 
         setIsDeleting(draftId);
         try {
-            await deleteDraft(user.id, draftId);
+            await deleteDraft(draftId);
             setShowActionMenu(null);
         } catch (error) {
             console.error('Error deleting draft:', error);

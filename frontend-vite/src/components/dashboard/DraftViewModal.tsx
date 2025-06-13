@@ -1,21 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useDrafts } from '../../hooks/useDrafts';
 import { createMcpClient } from '../../services/mcpService';
-import NewUnifiedPostCreator from '../NewUnifiedPostCreator';
 import {
     X,
-    Save,
     Send,
     FileText,
     Tag,
     AlertCircle,
     CheckCircle,
     Loader2,
-    Edit3,
-    Calendar,
-    Eye,
     Sparkles
 } from 'lucide-react';
 
@@ -30,13 +24,11 @@ const DraftViewModal: React.FC<DraftViewModalProps> = ({
     isOpen,
     onClose,
     draft,
-    onDraftUpdated
+    onDraftUpdated: _onDraftUpdated
 }) => {
     const navigate = useNavigate();
     const { user, mcpToken } = useAuth();
-    const { updateDraft } = useDrafts();
 
-    const [isEditing, setIsEditing] = useState(false);
     const [isPosting, setIsPosting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
@@ -46,13 +38,11 @@ const DraftViewModal: React.FC<DraftViewModalProps> = ({
         if (isOpen) {
             setError(null);
             setSuccess(null);
-            setIsEditing(false);
         }
     }, [isOpen]);
 
     const handleClose = () => {
         if (isPosting) return;
-        setIsEditing(false);
         setError(null);
         setSuccess(null);
         onClose();
@@ -76,7 +66,7 @@ const DraftViewModal: React.FC<DraftViewModalProps> = ({
             return;
         }
 
-        if (!content.trim()) {
+        if (!draft?.content?.trim()) {
             setError('Draft content is required');
             return;
         }
@@ -90,11 +80,10 @@ const DraftViewModal: React.FC<DraftViewModalProps> = ({
             });
 
             // Determine which tool to use based on post type
-            let result;
-            switch (postType) {
+            switch (draft.post_type) {
                 case 'basic':
-                    result = await mcpClient.callTool('create-post', {
-                        content: content,
+                    await mcpClient.callTool('create-post', {
+                        content: draft.content,
                         userId: user.id
                     });
                     break;
@@ -112,8 +101,8 @@ const DraftViewModal: React.FC<DraftViewModalProps> = ({
                     return;
 
                 default:
-                    result = await mcpClient.callTool('create-post', {
-                        content: content,
+                    await mcpClient.callTool('create-post', {
+                        content: draft.content,
                         userId: user.id
                     });
             }
@@ -295,7 +284,7 @@ const DraftViewModal: React.FC<DraftViewModalProps> = ({
                                         Tags
                                     </h4>
                                     <div className="flex flex-wrap gap-2">
-                                        {draft.tags.map((tag, index) => (
+                                        {draft.tags.map((tag: string, index: number) => (
                                             <span
                                                 key={index}
                                                 className="inline-flex items-center space-x-2 bg-gradient-to-r from-blue-100 to-blue-200 text-blue-700 px-3 py-1 rounded-full text-sm font-medium border border-blue-300 shadow-sm"
