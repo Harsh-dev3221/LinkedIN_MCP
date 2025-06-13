@@ -5,6 +5,7 @@ import { DraftTools } from "../tools/DraftTools.js";
 import { SchedulingTools } from "../tools/SchedulingTools.js";
 import { AnalyticsTools } from "../tools/AnalyticsTools.js";
 import { ActivityTools } from "../tools/ActivityTools.js";
+import { LinkScrapingTools } from "../tools/LinkScrapingTools.js";
 
 // Define CallToolResult interface since we can't import it
 interface CallToolContent {
@@ -37,13 +38,14 @@ export class Tools {
     private readonly EMAIL_FIELDS = 'emailAddress';
 
     // AI Orchestration system for intelligent content generation
-    private aiOrchestrator: AIOrchestrator;
+    public aiOrchestrator: AIOrchestrator;
 
     // New feature tool instances
     public draftTools: DraftTools;
     public schedulingTools: SchedulingTools;
     public analyticsTools: AnalyticsTools;
     public activityTools: ActivityTools;
+    public linkScrapingTools: LinkScrapingTools;
 
     constructor() {
         this.aiOrchestrator = new AIOrchestrator();
@@ -53,6 +55,7 @@ export class Tools {
         this.schedulingTools = new SchedulingTools();
         this.analyticsTools = new AnalyticsTools();
         this.activityTools = new ActivityTools();
+        this.linkScrapingTools = new LinkScrapingTools();
     }
 
     /**
@@ -680,6 +683,14 @@ export class Tools {
 
     // Content moderation and filtering
     private validatePromptContent(prompt: string): { isValid: boolean; reason?: string } {
+        // Handle undefined or null prompt
+        if (!prompt || typeof prompt !== 'string') {
+            return {
+                isValid: false,
+                reason: "No content provided. Please provide text content for your LinkedIn post."
+            };
+        }
+
         const lowerPrompt = prompt.toLowerCase();
 
         // Inappropriate content patterns
@@ -895,6 +906,8 @@ Start immediately with the learning or insight.`
 
         return templates[storyType as keyof typeof templates] || templates.journey;
     }
+
+    // Note: intelligentContentWithLinks method moved to index.ts for direct handling
 
     // Intelligent content generation using AI Orchestration (NEW - Cursor AI-like system)
     public generateIntelligentContent = async (

@@ -57,7 +57,7 @@ export class AIOrchestrator {
             strengths: ['fast', 'creative', 'conversational', 'general-purpose', 'content-generation'],
             weaknesses: ['less-technical', 'shorter-context'],
             costPerToken: 0.0001,
-            maxTokens: 1000,
+            maxTokens: 2500, // Increased for longer LinkedIn posts (1200-2000 chars)
             temperature: 0.8,
             priority: 1, // Highest priority
             isImageCapable: false
@@ -68,7 +68,7 @@ export class AIOrchestrator {
             strengths: ['fast', 'efficient', 'lightweight', 'quick-responses'],
             weaknesses: ['less-detailed', 'shorter-responses'],
             costPerToken: 0.00005,
-            maxTokens: 800,
+            maxTokens: 2000, // Increased for adequate LinkedIn post length
             temperature: 0.8,
             priority: 2, // Second priority
             isImageCapable: false
@@ -79,7 +79,7 @@ export class AIOrchestrator {
             strengths: ['image-analysis', 'multimodal', 'technical', 'precise', 'visual-understanding'],
             weaknesses: ['text-only-limited', 'specialized'],
             costPerToken: 0.0003,
-            maxTokens: 1500,
+            maxTokens: 3000, // Increased for detailed analysis and content generation
             temperature: 0.7,
             priority: 3, // Third priority (but only choice for images)
             isImageCapable: true
@@ -500,7 +500,24 @@ export class AIOrchestrator {
                     }
                 };
 
+                // Validate request body
+                console.log(`🔍 Request validation:`);
+                console.log(`   - Prompt in request body length: ${requestBody.contents[0].parts[0].text.length} chars`);
+                console.log(`   - Max output tokens: ${requestBody.generationConfig.maxOutputTokens}`);
+                console.log(`   - Temperature: ${requestBody.generationConfig.temperature}`);
+
                 console.log(`🔄 Attempting generation with ${model.name} using API key ${this.maskAPIKey(apiKeyConfig.key)}`);
+                console.log(`📤 Sending to Gemini - Prompt length: ${prompt.length} characters`);
+                console.log(`📤 Max tokens configured: ${model.maxTokens}`);
+                console.log(`📤 Prompt preview: ${prompt.substring(0, 500)}...`);
+
+                // Log the complete enhanced prompt for debugging
+                console.log('\n' + '='.repeat(80));
+                console.log('📋 COMPLETE ENHANCED PROMPT BEING SENT TO AI:');
+                console.log('='.repeat(80));
+                console.log(prompt);
+                console.log('='.repeat(80));
+                console.log('📋 END OF ENHANCED PROMPT\n');
 
                 const response = await axios.post(
                     model.endpoint,
@@ -516,8 +533,18 @@ export class AIOrchestrator {
                     throw new Error(`Invalid response from ${model.name}`);
                 }
 
+                const generatedText = response.data.candidates[0].content.parts[0].text;
                 console.log(`✅ Successfully generated content with ${model.name} using ${this.maskAPIKey(apiKeyConfig.key)}`);
-                return response.data.candidates[0].content.parts[0].text;
+                console.log(`📊 Generated content length: ${generatedText.length} characters`);
+                console.log(`📝 Generated content preview: ${generatedText.substring(0, 300)}...`);
+
+                // Check if content meets minimum length requirement
+                if (generatedText.length < 1200) {
+                    console.warn(`⚠️ Generated content is too short: ${generatedText.length} chars (minimum: 1200)`);
+                    console.warn(`🔍 This might indicate the AI model is not processing the full prompt correctly`);
+                }
+
+                return generatedText;
 
             } catch (error: any) {
                 lastError = error;
@@ -556,6 +583,241 @@ This content has been processed using our fallback system. For optimal results, 
 #LinkedIn #Professional #PostWizz`;
     }
 
+
+
+    /**
+     * Generate enhanced prompt with scraped content for GitHub repositories
+     */
+    private generateScrapedContentPrompt(
+        userPrompt: string,
+        scrapedData: any[],
+        classification: any,
+        userContext?: any
+    ): string {
+        console.log(`🎯 Generating GitHub-specific enhanced prompt...`);
+
+        // Check if we have GitHub data
+        const hasGitHubData = scrapedData.some(data => data.type === 'github');
+
+        if (hasGitHubData) {
+            console.log(`🐙 GitHub repository detected - using specialized prompt template`);
+
+            let enhancedPrompt = `You are creating a professional LinkedIn post about a GitHub repository.
+
+User's request: "${userPrompt}"
+
+Repository Analysis:
+`;
+
+            scrapedData.forEach((data, index) => {
+                if (data.status === 'success' && data.type === 'github') {
+                    enhancedPrompt += `
+📊 Repository: ${data.title}
+🔗 URL: ${data.url}
+📝 Description: ${data.description}
+⭐ Stars: ${data.github?.stars || 0}
+🍴 Forks: ${data.github?.forks || 0}
+💻 Language: ${data.github?.language || 'Not specified'}
+📦 Size: ${data.github?.size || 0} KB
+`;
+
+                    // Add comprehensive project structure and file contents
+                    if (data.github?.projectFiles && Object.keys(data.github.projectFiles).length > 0) {
+                        console.log(`📦 Processing ${Object.keys(data.github.projectFiles).length} project files for AI prompt`);
+                        enhancedPrompt += `
+🏗️ Project Structure & Configuration Files:
+`;
+                        Object.entries(data.github.projectFiles).forEach(([fileName, fileData]: [string, any]) => {
+                            console.log(`📄 Adding ${fileName} to prompt - Content length: ${fileData.content?.length || 0} chars`);
+                            enhancedPrompt += `
+📄 ${fileName} (${fileData.description}):
+`;
+
+                            // Add specific details for package.json
+                            if (fileName === 'package.json' && fileData.parsed) {
+                                const deps = Object.keys(fileData.parsed.dependencies || {});
+                                const devDeps = Object.keys(fileData.parsed.devDependencies || {});
+                                const scripts = Object.keys(fileData.parsed.scripts || {});
+
+                                enhancedPrompt += `  📛 Name: ${fileData.parsed.name || 'Not specified'}\n`;
+                                enhancedPrompt += `  🏷️ Version: ${fileData.parsed.version || 'Not specified'}\n`;
+                                enhancedPrompt += `  📝 Description: ${fileData.parsed.description || 'Not specified'}\n`;
+
+                                if (deps.length > 0) {
+                                    enhancedPrompt += `  📦 Dependencies (${deps.length}): ${deps.slice(0, 10).join(', ')}${deps.length > 10 ? ` and ${deps.length - 10} more` : ''}\n`;
+                                }
+                                if (devDeps.length > 0) {
+                                    enhancedPrompt += `  🔧 Dev Dependencies (${devDeps.length}): ${devDeps.slice(0, 5).join(', ')}${devDeps.length > 5 ? ` and ${devDeps.length - 5} more` : ''}\n`;
+                                }
+                                if (scripts.length > 0) {
+                                    enhancedPrompt += `  ⚡ Scripts: ${scripts.join(', ')}\n`;
+                                }
+
+                                // ALWAYS add raw content for comprehensive context
+                                if (fileData.content) {
+                                    enhancedPrompt += `  📋 Full File Content:\n${fileData.content}\n`;
+                                }
+                            } else {
+                                // For non-JSON files, include the content directly
+                                if (fileData.content) {
+                                    enhancedPrompt += `  📋 Content:\n${fileData.content}\n`;
+                                }
+                            }
+                        });
+                    }
+
+                    // Also check if project files are in metadata (alternative data structure)
+                    if (data.metadata?.projectFiles && Object.keys(data.metadata.projectFiles).length > 0) {
+                        enhancedPrompt += `
+🏗️ Additional Project Files:
+`;
+                        Object.entries(data.metadata.projectFiles).forEach(([fileName, fileData]: [string, any]) => {
+                            enhancedPrompt += `
+📄 ${fileName} (${fileData.description || 'Configuration file'}):
+`;
+                            if (fileData.content) {
+                                enhancedPrompt += `  📋 Content:\n${fileData.content}\n`;
+                            }
+                        });
+                    }
+
+                    // Add README content (first 2000 chars for context)
+                    if (data.content && data.content.length > 0) {
+                        const readmePreview = data.content.substring(0, 2000);
+                        enhancedPrompt += `
+📖 README Content:
+${readmePreview}${data.content.length > 2000 ? '\n...(content continues)' : ''}
+`;
+                    }
+                }
+            });
+
+            enhancedPrompt += `
+
+🎯 CONTENT CREATION GUIDELINES:
+
+Create a compelling LinkedIn post that showcases this GitHub repository professionally. Focus on:
+
+1. **TECHNICAL STORYTELLING**:
+   - Start with the problem this project solves
+   - Highlight the innovative technical approach
+   - Explain why the technology choices matter
+   - Connect technical features to real-world impact
+
+2. **ENGAGEMENT STRATEGY**:
+   - Use a compelling hook that grabs attention
+   - Share insights about the development process
+   - Highlight unique or impressive technical aspects
+   - Ask thought-provoking questions to encourage discussion
+
+3. **PROFESSIONAL TONE**:
+   - Write as a developer sharing an exciting discovery
+   - Be enthusiastic but credible
+   - Focus on learning and innovation
+   - Avoid overly promotional language
+
+4. **TECHNICAL DEPTH**:
+   - Mention specific technologies and why they're significant
+   - Reference architecture decisions and their benefits
+   - Highlight any innovative patterns or approaches
+   - Connect the tech stack to the project's goals
+
+5. **STRUCTURE & FORMAT**:
+   - MINIMUM 1400 characters, TARGET 1600-2000 characters for optimal LinkedIn engagement
+   - Use natural paragraph breaks (actual line breaks between paragraphs)
+   - NO markdown formatting (**bold**, etc.) - use plain text only
+   - NO meta-commentary or introductory phrases like "Here's a post about..."
+   - Include 3-5 relevant hashtags at the end
+   - Write in first person for authenticity and personal connection
+   - Create 4-6 substantial paragraphs with detailed technical insights
+
+6. **VALUE PROPOSITION**:
+   - What can the LinkedIn audience learn from this?
+   - Why should developers care about this project?
+   - What makes this technically interesting or innovative?
+   - How does it contribute to the broader tech community?
+   - What specific technical challenges were solved?
+   - What lessons can other developers apply to their work?
+
+7. **CONTENT DEPTH REQUIREMENTS**:
+   - Explain the technical architecture and key components
+   - Discuss specific technology choices and their benefits
+   - Share insights about the development process and challenges
+   - Connect the project to broader industry trends or problems
+   - Include specific details from the README and project files
+   - Make it educational and valuable for the developer community
+
+Generate a compelling, detailed LinkedIn post that meets these STRICT requirements:
+- MINIMUM 1400 characters (aim for 1600-2000 characters)
+- 4-6 substantial paragraphs with technical depth
+- Include specific details from the repository analysis above
+- Write in first person with authentic developer voice
+- NO introductory phrases - start directly with engaging content
+- End with 3-5 relevant hashtags
+
+Start writing the LinkedIn post now:`;
+
+            console.log(`✅ GitHub-enhanced prompt generated (${enhancedPrompt.length} characters)`);
+            console.log(`📝 Enhanced prompt preview (first 500 chars): ${enhancedPrompt.substring(0, 500)}...`);
+            console.log(`📊 Project files section length: ${enhancedPrompt.includes('🏗️ Project Structure') ? 'INCLUDED' : 'MISSING'}`);
+            return enhancedPrompt;
+        } else {
+            // Fallback to generic scraped content prompt
+            console.log(`🌐 Non-GitHub content detected - using generic prompt template`);
+            return this.generateGenericScrapedPrompt(userPrompt, scrapedData, userContext);
+        }
+    }
+
+    /**
+     * Generate generic prompt for non-GitHub scraped content
+     */
+    private generateGenericScrapedPrompt(
+        userPrompt: string,
+        scrapedData: any[],
+        userContext?: any
+    ): string {
+        let enhancedPrompt = `You are writing a LinkedIn post that integrates user thoughts with scraped content insights.
+
+Original user text: "${userPrompt}"
+
+Additional context from scraped sources:
+`;
+
+        scrapedData.forEach((data, index) => {
+            if (data.status === 'success') {
+                enhancedPrompt += `\nSource ${index + 1}: ${data.title}
+URL: ${data.url}
+Type: ${data.type}
+`;
+
+                if (data.description) {
+                    enhancedPrompt += `Description: ${data.description}\n`;
+                }
+
+                if (data.metadata?.author) {
+                    enhancedPrompt += `Author: ${data.metadata.author}\n`;
+                }
+
+                // Add content preview (first 500 chars)
+                const contentPreview = data.content.substring(0, 500);
+                enhancedPrompt += `Content Preview: ${contentPreview}${data.content.length > 500 ? '...' : ''}\n`;
+            }
+        });
+
+        enhancedPrompt += `\nCreate a professional LinkedIn post that:
+1. Integrates the user's original thoughts with insights from the scraped content
+2. Maintains an authentic, personal voice
+3. Provides value to the LinkedIn audience
+4. Uses natural paragraph formatting with proper line breaks
+5. Is 1200-2000 characters long
+6. Does not use ** bold formatting
+7. Does not include email-like prefixes or meta-commentary
+
+Generate the LinkedIn post content directly without any prefixes or explanations.`;
+
+        return enhancedPrompt;
+    }
+
     /**
      * Get processing statistics
      */
@@ -569,6 +831,114 @@ This content has been processed using our fallback system. For optimal results, 
             totalProcessingPaths: 5, // classification, selection, generation, optimization, fallback
             averageConfidence: 0.85 // Based on typical performance
         };
+    }
+
+    /**
+     * Process content with scraped data integration
+     */
+    public async processContentWithScrapedData(
+        userPrompt: string,
+        scrapedData: any[],
+        userContext?: {
+            name?: string;
+            role?: string;
+            industry?: string;
+            previousPosts?: string[];
+        }
+    ): Promise<OrchestrationResult> {
+        const startTime = Date.now();
+        const processingPath: string[] = [];
+        const fallbacksUsed: string[] = [];
+        const optimizations: string[] = [];
+
+        try {
+            // Step 1: Classify the combined content
+            processingPath.push('classification-with-scraped-data');
+            const classification = await this.classifier.classifyPrompt(userPrompt);
+
+            // Step 2: Select optimal AI model
+            processingPath.push('model-selection');
+            const selectedModel = this.selectOptimalModel(classification);
+
+            // Step 3: Generate enhanced prompt with scraped content
+            processingPath.push('scraped-content-prompt-generation');
+            const enhancedPrompt = this.generateScrapedContentPrompt(
+                userPrompt,
+                scrapedData,
+                classification,
+                userContext
+            );
+
+            // Step 4: Generate content with optimal model
+            processingPath.push('content-generation-with-context');
+            const modelPriorityOrder = this.getModelPriorityOrder(selectedModel);
+            let generatedContent = '';
+            let modelUsed = '';
+
+            // Try each model in priority order
+            for (let i = 0; i < modelPriorityOrder.length; i++) {
+                const currentModelKey = modelPriorityOrder[i];
+                const currentModel = this.models[currentModelKey];
+
+                if (!currentModel) {
+                    console.warn(`Model ${currentModelKey} not found, skipping...`);
+                    continue;
+                }
+
+                try {
+                    console.log(`🎯 Attempting content generation with ${currentModel.name} (priority ${i + 1})`);
+                    console.log(`📝 Enhanced prompt preview (first 300 chars): ${enhancedPrompt.substring(0, 300)}...`);
+                    console.log(`📊 Enhanced prompt total length: ${enhancedPrompt.length} characters`);
+
+                    generatedContent = await this.generateWithModel(
+                        enhancedPrompt,
+                        currentModel
+                    );
+
+                    modelUsed = currentModelKey;
+                    console.log(`✅ Successfully generated content with ${currentModel.name}`);
+                    console.log(`📄 Generated content preview: ${generatedContent.substring(0, 200)}...`);
+                    break; // Success! Exit the loop
+
+                } catch (error) {
+                    console.error(`❌ Model ${currentModel.name} failed:`, error);
+                    fallbacksUsed.push(currentModelKey);
+
+                    if (i === modelPriorityOrder.length - 1) {
+                        throw new Error(`All models failed. Last error: ${error}`);
+                    }
+                }
+            }
+
+            // Step 5: Optimize with scraped context
+            processingPath.push('content-optimization-with-context');
+            const optimizedContent = await this.contentOptimizer.optimize(
+                generatedContent,
+                classification
+            );
+
+            optimizations.push(...this.contentOptimizer.getLastOptimizations());
+
+            const processingTime = Date.now() - startTime;
+
+            return {
+                classification,
+                optimizedPrompt: enhancedPrompt,
+                generatedContent: optimizedContent,
+                confidence: classification.confidence,
+                processingPath,
+                metadata: {
+                    modelUsed,
+                    processingTime,
+                    optimizations: [...optimizations, 'scraped-content-integration'],
+                    fallbacksUsed
+                }
+            };
+
+        } catch (error) {
+            console.error('AI Orchestration with scraped data error:', error);
+            throw error;
+        }
     }
 
     /**

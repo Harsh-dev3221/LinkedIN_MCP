@@ -28,6 +28,7 @@ import { useDropzone } from 'react-dropzone';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DeleteIcon from '@mui/icons-material/Delete';
 import axios from 'axios';
+import LinkScrapingIndicator from './LinkScrapingIndicator';
 
 // Create MCP client for API communication
 const createMcpClient = (token: string, onTokenExpired?: () => void) => {
@@ -98,6 +99,8 @@ const PostAI = ({ authToken, userId, onGeneratedContent, onError, onSuccess, onT
     const [isProcessing, setIsProcessing] = useState(false);
     const [storyType, setStoryType] = useState<'journey' | 'technical' | 'achievement' | 'learning'>('journey');
     const [useIntelligentClassification, setUseIntelligentClassification] = useState(true);
+    const [detectedLinks, setDetectedLinks] = useState<any[]>([]);
+    const [scrapedData, setScrapedData] = useState<any[]>([]);
 
     // Constants
     const MIN_IMAGES = 2;
@@ -206,19 +209,36 @@ const PostAI = ({ authToken, userId, onGeneratedContent, onError, onSuccess, onT
             if (!isImageEnabled || selectedImages.length === 0) {
                 if (useIntelligentClassification) {
                     try {
-                        // Use intelligent AI classification and generation
-                        const result = await mcpClient.callTool('generate-intelligent-content', {
-                            content: postText,
-                            userId: userId,
-                            userContext: {
-                                name: userId, // Will be enhanced with actual user data
-                                role: undefined, // Could be collected from user profile
-                                industry: undefined, // Could be inferred from LinkedIn data
-                                previousPosts: [] // Could be stored for learning
-                            }
-                        });
-                        onGeneratedContent({ content: result.content[0].text });
-                        onSuccess('🧠 Intelligent content generated successfully!');
+                        // Check if there are detected links for enhanced generation
+                        if (detectedLinks.length > 0) {
+                            // Use intelligent content generation with link scraping
+                            const result = await mcpClient.callTool('intelligent-content-with-links', {
+                                content: postText,
+                                userId: userId,
+                                userContext: {
+                                    name: userId, // Will be enhanced with actual user data
+                                    role: undefined, // Could be collected from user profile
+                                    industry: undefined, // Could be inferred from LinkedIn data
+                                    previousPosts: [] // Could be stored for learning
+                                }
+                            });
+                            onGeneratedContent({ content: result.content[0].text });
+                            onSuccess('🔗 Enhanced content generated with scraped insights!');
+                        } else {
+                            // Use standard intelligent AI classification and generation
+                            const result = await mcpClient.callTool('generate-intelligent-content', {
+                                content: postText,
+                                userId: userId,
+                                userContext: {
+                                    name: userId, // Will be enhanced with actual user data
+                                    role: undefined, // Could be collected from user profile
+                                    industry: undefined, // Could be inferred from LinkedIn data
+                                    previousPosts: [] // Could be stored for learning
+                                }
+                            });
+                            onGeneratedContent({ content: result.content[0].text });
+                            onSuccess('🧠 Intelligent content generated successfully!');
+                        }
                     } catch (error) {
                         // Intelligent generation failed, falling back to manual story type
                         // Fallback to manual story type selection
@@ -434,6 +454,14 @@ My draft text to enhance: "${postText}"`,
                         ),
                     }}
                     required
+                />
+
+                {/* Link Scraping Indicator */}
+                <LinkScrapingIndicator
+                    text={postText}
+                    onLinksDetected={setDetectedLinks}
+                    onScrapingComplete={setScrapedData}
+                    isProcessing={isProcessing}
                 />
 
                 <FormControlLabel

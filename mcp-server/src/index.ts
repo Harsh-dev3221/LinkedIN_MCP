@@ -340,6 +340,196 @@ server.tool(
     }
 );
 
+// Helper function to add link scraping to any generation tool
+async function generateContentWithLinkScraping(
+    content: string,
+    userId: string,
+    userContext: any,
+    generationFunction: (content: string, userContext: any, linkedinTokens: any) => Promise<any>,
+    linkedinTokens: any
+) {
+    // Check for links in content
+    const urlRegex = /https?:\/\/[^\s]+/g;
+    const urls = content.match(urlRegex) || [];
+
+    if (urls.length > 0) {
+        console.log(`🔗 Links detected (${urls.length}), using enhanced generation with scraping...`);
+
+        // Scrape the detected links
+        const scrapedData = await tools.linkScrapingTools.scrapeLinks(
+            urls,
+            userId || 'anonymous',
+            {
+                timeout: 15000,
+                maxContentLength: 6000,
+                followRedirects: true,
+                cacheResults: true
+            }
+        );
+
+        // Use AI Orchestrator with scraped data
+        const orchestrationResult = await tools.aiOrchestrator.processContentWithScrapedData(
+            content,
+            scrapedData,
+            userContext
+        );
+
+        return {
+            content: [{
+                type: "text",
+                text: orchestrationResult.generatedContent
+            }],
+            isError: false
+        };
+    } else {
+        // No links detected, use standard generation
+        return generationFunction(content, userContext, linkedinTokens);
+    }
+}
+
+// Smart Image Generation with Conditional Link Enhancement
+async function smartImageGeneration(
+    imageBase64: string,
+    userText: string,
+    mimeType: string,
+    userId: string,
+    standardGenerationFunction: (imageBase64: string, userText: string, mimeType: string, linkedinTokens: any) => Promise<any>,
+    linkedinTokens: any,
+    toolName: string = 'unknown'
+) {
+    console.log(`\n🎯 === SMART IMAGE GENERATION START (${toolName}) ===`);
+    console.log(`📝 User text length: ${userText.length} characters`);
+    console.log(`📷 Image provided: ${imageBase64 ? 'Yes' : 'No'}`);
+    console.log(`👤 User ID: ${userId || 'anonymous'}`);
+
+    // 1. Check for links in user text
+    const urlRegex = /https?:\/\/[^\s]+/g;
+    const detectedLinks = userText.match(urlRegex) || [];
+
+    console.log(`🔍 Link detection results:`);
+    console.log(`   - Links found: ${detectedLinks.length}`);
+    if (detectedLinks.length > 0) {
+        console.log(`   - Detected URLs: ${detectedLinks.join(', ')}`);
+    }
+
+    if (detectedLinks.length > 0) {
+        console.log(`\n🚀 ENHANCED MODE ACTIVATED - Image + Link Processing`);
+
+        try {
+            console.log(`⏱️ Starting parallel processing: Image Analysis + Link Scraping...`);
+            const startTime = Date.now();
+
+            // 2. Enhanced path: Image Analysis + Link Scraping in parallel
+            const [imageAnalysisResult, scrapedData] = await Promise.all([
+                // Image analysis using existing tool logic
+                (async () => {
+                    console.log(`📷 Starting image analysis...`);
+                    const result = await standardGenerationFunction(imageBase64, userText, mimeType, linkedinTokens);
+                    console.log(`✅ Image analysis completed`);
+                    return result;
+                })(),
+
+                // Link scraping
+                (async () => {
+                    console.log(`🔗 Starting link scraping for ${detectedLinks.length} URL(s)...`);
+                    const scraped = await tools.linkScrapingTools.scrapeLinks(
+                        detectedLinks,
+                        userId || 'anonymous',
+                        {
+                            timeout: 15000,
+                            maxContentLength: 6000,
+                            followRedirects: true,
+                            cacheResults: true
+                        }
+                    );
+                    console.log(`✅ Link scraping completed - ${scraped.length} successful scrapes`);
+                    return scraped;
+                })()
+            ]);
+
+            const parallelTime = Date.now() - startTime;
+            console.log(`⚡ Parallel processing completed in ${parallelTime}ms`);
+
+            // 3. Check if we have both image analysis and scraped data
+            if (scrapedData && scrapedData.length > 0) {
+                console.log(`\n🧠 ENHANCED AI GENERATION - Combining contexts...`);
+                console.log(`📊 Available contexts:`);
+                console.log(`   - Image analysis: ${imageAnalysisResult ? 'Available' : 'Failed'}`);
+                console.log(`   - Scraped data: ${scrapedData.length} sources`);
+
+                // Extract content from image analysis result
+                let imageContent = '';
+                if (imageAnalysisResult && !imageAnalysisResult.isError && imageAnalysisResult.content?.[0]?.text) {
+                    imageContent = imageAnalysisResult.content[0].text;
+                    console.log(`   - Image content length: ${imageContent.length} chars`);
+                }
+
+                // 4. Use AI Orchestrator with combined context
+                const enhancedPrompt = `
+Image Analysis Context:
+${imageContent}
+
+User Request: ${userText}
+
+Additional Context from Links:
+${scrapedData.map(data => `
+📄 ${data.title || 'Untitled'}
+🔗 ${data.url}
+📝 ${data.content?.substring(0, 500)}...
+`).join('\n')}
+
+Create a comprehensive LinkedIn post that integrates insights from both the image and the scraped web content.`;
+
+                console.log(`📝 Enhanced prompt created (${enhancedPrompt.length} characters)`);
+
+                const orchestrationResult = await tools.aiOrchestrator.processContentWithScrapedData(
+                    userText,
+                    scrapedData,
+                    { name: `Image Analysis Tool: ${toolName}` }
+                );
+
+                console.log(`✅ Enhanced generation completed`);
+                console.log(`📊 Final content length: ${orchestrationResult.generatedContent?.length || 0} characters`);
+                console.log(`🎯 === SMART IMAGE GENERATION END (ENHANCED) ===\n`);
+
+                return {
+                    content: [{
+                        type: "text",
+                        text: orchestrationResult.generatedContent
+                    }],
+                    isError: false,
+                    enhanced: true,
+                    linksProcessed: detectedLinks.length,
+                    processingTime: Date.now() - startTime
+                };
+            } else {
+                console.log(`⚠️ No scraped data available, falling back to image analysis result`);
+                console.log(`🎯 === SMART IMAGE GENERATION END (FALLBACK) ===\n`);
+                return imageAnalysisResult;
+            }
+
+        } catch (error: any) {
+            console.error(`❌ Enhanced generation failed: ${error?.message || 'Unknown error'}`);
+            console.log(`🔄 Falling back to standard image analysis...`);
+
+            // Fallback to standard generation if enhancement fails
+            const fallbackResult = await standardGenerationFunction(imageBase64, userText, mimeType, linkedinTokens);
+            console.log(`✅ Fallback generation completed`);
+            console.log(`🎯 === SMART IMAGE GENERATION END (FALLBACK) ===\n`);
+            return fallbackResult;
+        }
+    } else {
+        console.log(`\n📷 STANDARD MODE - Image Analysis Only`);
+        console.log(`🔄 Processing with standard image analysis...`);
+
+        // Standard path: Image Analysis only
+        const result = await standardGenerationFunction(imageBase64, userText, mimeType, linkedinTokens);
+        console.log(`✅ Standard generation completed`);
+        console.log(`🎯 === SMART IMAGE GENERATION END (STANDARD) ===\n`);
+        return result;
+    }
+}
+
 // Register intelligent content generation tool (NEW - Cursor AI-like system)
 server.tool(
     "generate-intelligent-content",
@@ -370,8 +560,14 @@ server.tool(
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
 
-        // Use intelligent AI orchestration system
-        return tools.generateIntelligentContent({ prompt: content, userContext }, linkedinTokens);
+        // Use enhanced generation with link scraping
+        return generateContentWithLinkScraping(
+            content,
+            userId || 'anonymous',
+            userContext,
+            (content, userContext, linkedinTokens) => tools.generateIntelligentContent({ prompt: content, userContext }, linkedinTokens),
+            linkedinTokens
+        );
     }
 );
 
@@ -400,24 +596,23 @@ server.tool(
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
 
-        // Generate enhanced content using Gemini 2.0 Flash with story template (FREE)
-        const enhancedContentResult = await tools.generateTextContent({ prompt: content, storyType }, linkedinTokens);
-
-        if (enhancedContentResult.isError) {
-            // If AI enhancement fails, return original content
-            console.warn('AI enhancement failed, returning original content:', enhancedContentResult.content[0].text);
-            return {
-                content: [
-                    {
-                        type: "text",
-                        text: content
-                    }
-                ]
-            };
-        }
-
-        // Return the enhanced content for user review
-        return enhancedContentResult;
+        // Use enhanced generation with link scraping
+        return generateContentWithLinkScraping(
+            content,
+            userId || 'anonymous',
+            { storyType },
+            async (content, userContext, linkedinTokens) => {
+                const result = await tools.generateTextContent({ prompt: content, storyType: userContext.storyType }, linkedinTokens);
+                if (result.isError) {
+                    console.warn('AI enhancement failed, returning original content:', result.content[0].text);
+                    return {
+                        content: [{ type: "text", text: content }]
+                    };
+                }
+                return result;
+            },
+            linkedinTokens
+        );
     }
 );
 
@@ -444,7 +639,13 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.generateTextContent({ prompt: content, storyType: 'journey' }, linkedinTokens);
+        return generateContentWithLinkScraping(
+            content,
+            userId || 'anonymous',
+            { storyType: 'journey' },
+            (content, userContext, linkedinTokens) => tools.generateTextContent({ prompt: content, storyType: 'journey' }, linkedinTokens),
+            linkedinTokens
+        );
     }
 );
 
@@ -470,7 +671,13 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.generateTextContent({ prompt: content, storyType: 'technical' }, linkedinTokens);
+        return generateContentWithLinkScraping(
+            content,
+            userId || 'anonymous',
+            { storyType: 'technical' },
+            (content, userContext, linkedinTokens) => tools.generateTextContent({ prompt: content, storyType: 'technical' }, linkedinTokens),
+            linkedinTokens
+        );
     }
 );
 
@@ -496,7 +703,13 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.generateTextContent({ prompt: content, storyType: 'achievement' }, linkedinTokens);
+        return generateContentWithLinkScraping(
+            content,
+            userId || 'anonymous',
+            { storyType: 'achievement' },
+            (content, userContext, linkedinTokens) => tools.generateTextContent({ prompt: content, storyType: 'achievement' }, linkedinTokens),
+            linkedinTokens
+        );
     }
 );
 
@@ -522,7 +735,13 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.generateTextContent({ prompt: content, storyType: 'learning' }, linkedinTokens);
+        return generateContentWithLinkScraping(
+            content,
+            userId || 'anonymous',
+            { storyType: 'learning' },
+            (content, userContext, linkedinTokens) => tools.generateTextContent({ prompt: content, storyType: 'learning' }, linkedinTokens),
+            linkedinTokens
+        );
     }
 );
 
@@ -570,7 +789,7 @@ server.tool(
 // Register analyze-image-create-post tool (Content generation only - FREE)
 server.tool(
     "analyze-image-create-post",
-    "Analyze an image and create LinkedIn post content (FREE - content generation only)",
+    "Analyze an image and create LinkedIn post content with smart link enhancement (FREE - content generation only)",
     {
         imageBase64: z.string(),
         prompt: z.string(),
@@ -593,10 +812,25 @@ server.tool(
 
         // No token consumption for content generation - this is FREE
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        const result = await tools.analyzeImageAndCreateContent({ imageBase64, prompt, mimeType }, linkedinTokens);
+
+        // Use smart image generation with conditional link enhancement
+        const result = await smartImageGeneration(
+            imageBase64,
+            prompt,
+            mimeType,
+            userId,
+            // Standard generation function (when no links detected)
+            (imgBase64, userPrompt, imgMimeType, tokens) =>
+                tools.analyzeImageAndCreateContent({
+                    imageBase64: imgBase64,
+                    prompt: userPrompt,
+                    mimeType: imgMimeType
+                }, tokens),
+            linkedinTokens,
+            'analyze-image-create-post'
+        );
 
         // No post recording for content generation - only for actual publishing
-
         return result;
     }
 );
@@ -604,7 +838,7 @@ server.tool(
 // Register the new structured post creation tool
 server.tool(
     "analyze-image-structured-post",
-    "Analyze an image and create a structured LinkedIn post based on user text using XML format",
+    "Analyze an image and create a structured LinkedIn post with smart link enhancement using XML format (FREE)",
     {
         imageBase64: z.string(),
         userText: z.string(),
@@ -625,14 +859,30 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        return tools.analyzeImageCreateStructuredPost({ imageBase64, userText, mimeType }, linkedinTokens);
+
+        // Use smart image generation with conditional link enhancement
+        return smartImageGeneration(
+            imageBase64,
+            userText,
+            mimeType,
+            'anonymous', // No userId for this tool
+            // Standard generation function (when no links detected)
+            (imgBase64, userPrompt, imgMimeType, tokens) =>
+                tools.analyzeImageCreateStructuredPost({
+                    imageBase64: imgBase64,
+                    userText: userPrompt,
+                    mimeType: imgMimeType
+                }, tokens),
+            linkedinTokens,
+            'analyze-image-structured-post'
+        );
     }
 );
 
 // Register the new tool that analyzes image and posts with the image (Single image post - 5 tokens)
 server.tool(
     "analyze-image-structured-post-with-image",
-    "Analyze an image, create structured content based on user text, and post to LinkedIn with the image - 5 tokens",
+    "Analyze an image with smart link enhancement, create structured content, and post to LinkedIn with the image - 5 tokens",
     {
         imageBase64: z.string(),
         userText: z.string(),
@@ -665,7 +915,23 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        const result = await tools.analyzeImageStructuredPostWithImage({ imageBase64, userText, mimeType }, linkedinTokens);
+
+        // Use smart image generation with conditional link enhancement
+        const result = await smartImageGeneration(
+            imageBase64,
+            userText,
+            mimeType,
+            userId,
+            // Standard generation function (when no links detected)
+            (imgBase64, userPrompt, imgMimeType, tokens) =>
+                tools.analyzeImageStructuredPostWithImage({
+                    imageBase64: imgBase64,
+                    userText: userPrompt,
+                    mimeType: imgMimeType
+                }, tokens),
+            linkedinTokens,
+            'analyze-image-structured-post-with-image'
+        );
 
         // Record the post
         try {
@@ -780,10 +1046,89 @@ server.tool(
     }
 );
 
+// Smart Multi-Image Generation with Conditional Link Enhancement
+async function smartMultiImageGeneration(
+    imageBase64s: string[],
+    userText: string,
+    mimeType: string,
+    userId: string,
+    standardGenerationFunction: (imageBase64s: string[], userText: string, mimeType: string, linkedinTokens: any) => Promise<any>,
+    linkedinTokens: any
+) {
+    console.log(`\n🎯 === SMART MULTI-IMAGE GENERATION START ===`);
+    console.log(`📝 User text length: ${userText.length} characters`);
+    console.log(`📷 Images provided: ${imageBase64s.length}`);
+    console.log(`👤 User ID: ${userId || 'anonymous'}`);
+
+    // Check for links in user text
+    const urlRegex = /https?:\/\/[^\s]+/g;
+    const detectedLinks = userText.match(urlRegex) || [];
+
+    console.log(`🔍 Link detection results:`);
+    console.log(`   - Links found: ${detectedLinks.length}`);
+    if (detectedLinks.length > 0) {
+        console.log(`   - Detected URLs: ${detectedLinks.join(', ')}`);
+    }
+
+    if (detectedLinks.length > 0) {
+        console.log(`\n🚀 ENHANCED MODE ACTIVATED - Multi-Image + Link Processing`);
+
+        try {
+            console.log(`🔗 Starting link scraping for ${detectedLinks.length} URL(s)...`);
+            const scrapedData = await tools.linkScrapingTools.scrapeLinks(
+                detectedLinks,
+                userId || 'anonymous',
+                {
+                    timeout: 15000,
+                    maxContentLength: 6000,
+                    followRedirects: true,
+                    cacheResults: true
+                }
+            );
+            console.log(`✅ Link scraping completed - ${scrapedData.length} successful scrapes`);
+
+            if (scrapedData && scrapedData.length > 0) {
+                console.log(`\n🧠 ENHANCED AI GENERATION - Combining multi-image + link contexts...`);
+
+                // Use AI Orchestrator with combined context
+                const orchestrationResult = await tools.aiOrchestrator.processContentWithScrapedData(
+                    userText,
+                    scrapedData,
+                    { name: `Multi-Image Tool: linkedin-post-with-multiple-images` }
+                );
+
+                console.log(`✅ Enhanced generation completed`);
+                console.log(`📊 Final content length: ${orchestrationResult.generatedContent?.length || 0} characters`);
+
+                // Use the enhanced content with the standard multi-image posting function
+                const enhancedText = orchestrationResult.generatedContent;
+                const result = await standardGenerationFunction(imageBase64s, enhancedText, mimeType, linkedinTokens);
+
+                console.log(`🎯 === SMART MULTI-IMAGE GENERATION END (ENHANCED) ===\n`);
+                return result;
+            } else {
+                console.log(`⚠️ No scraped data available, falling back to standard generation`);
+            }
+        } catch (error: any) {
+            console.error(`❌ Enhanced generation failed: ${error?.message || 'Unknown error'}`);
+            console.log(`🔄 Falling back to standard multi-image generation...`);
+        }
+    } else {
+        console.log(`\n📷 STANDARD MODE - Multi-Image Only`);
+    }
+
+    // Standard or fallback generation
+    console.log(`🔄 Processing with standard multi-image generation...`);
+    const result = await standardGenerationFunction(imageBase64s, userText, mimeType, linkedinTokens);
+    console.log(`✅ Standard generation completed`);
+    console.log(`🎯 === SMART MULTI-IMAGE GENERATION END (STANDARD) ===\n`);
+    return result;
+}
+
 // Register linkedin-post-with-multiple-images tool (Multi-image post - 10 tokens)
 server.tool(
     "linkedin-post-with-multiple-images",
-    "Create a LinkedIn post with multiple images (carousel post) - 10 tokens",
+    "Create a LinkedIn post with multiple images and smart link enhancement (carousel post) - 10 tokens",
     {
         imageBase64s: z.array(z.string()),
         text: z.string(),
@@ -816,7 +1161,22 @@ server.tool(
         }
 
         const linkedinTokens = transport.auth.extra.linkedinTokens;
-        const result = await tools.linkedInPostWithMultipleImages({ imageBase64s, text, mimeType }, linkedinTokens);
+
+        // Use smart multi-image generation with conditional link enhancement
+        const result = await smartMultiImageGeneration(
+            imageBase64s,
+            text,
+            mimeType || 'image/jpeg',
+            userId,
+            // Standard generation function (when no links detected)
+            (imgs, userText, mime, tokens) =>
+                tools.linkedInPostWithMultipleImages({
+                    imageBase64s: imgs,
+                    text: userText,
+                    mimeType: mime
+                }, tokens),
+            linkedinTokens
+        );
 
         // Record the post
         try {
@@ -1307,6 +1667,182 @@ server.tool(
                     type: "text",
                     text: `❌ Failed to trigger post scheduler: ${error instanceof Error ? error.message : 'Unknown error'}`
                 }]
+            };
+        }
+    }
+);
+
+// ==================== LINK SCRAPING TOOLS ====================
+
+// Register detect-links tool
+server.tool(
+    "detect-links",
+    "Detect and classify links in user text for intelligent scraping",
+    {
+        text: z.string(),
+        userId: z.string()
+    },
+    async ({ text, userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.linkScrapingTools.detectLinks({ text, userId });
+    }
+);
+
+// Register scrape-urls tool
+server.tool(
+    "scrape-urls",
+    "Scrape content from multiple URLs with intelligent extraction",
+    {
+        urls: z.array(z.string()),
+        options: z.object({
+            includeImages: z.boolean().optional(),
+            maxContentLength: z.number().optional(),
+            includeMetadata: z.boolean().optional(),
+            followRedirects: z.boolean().optional(),
+            timeout: z.number().optional(),
+            retryAttempts: z.number().optional()
+        }).optional(),
+        userId: z.string()
+    },
+    async ({ urls, options, userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        return tools.linkScrapingTools.scrapeUrls({ urls, options, userId });
+    }
+);
+
+// Register generate-with-scraped-content tool
+server.tool(
+    "generate-with-scraped-content",
+    "Generate LinkedIn content enhanced with scraped data insights",
+    {
+        userText: z.string(),
+        scrapedData: z.array(z.any()),
+        contentType: z.string().optional(),
+        userId: z.string()
+    },
+    async ({ userText, scrapedData, contentType, userId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        // This method should be removed as it's replaced by intelligentContentWithLinks
+        throw new Error("This tool has been replaced by intelligent-content-with-links");
+    }
+);
+
+// Register intelligent-content-with-links tool (main integration tool)
+server.tool(
+    "intelligent-content-with-links",
+    "Detect links, scrape content, and generate intelligent LinkedIn posts - 2 tokens",
+    {
+        content: z.string(),
+        userId: z.string(),
+        userContext: z.object({
+            name: z.string().optional(),
+            role: z.string().optional(),
+            industry: z.string().optional(),
+            previousPosts: z.array(z.string()).optional()
+        }).optional()
+    },
+    async ({ content, userId, userContext }) => {
+        try {
+            console.log('🔗 Step 1: Detecting links in user content...');
+
+            // Extract URLs from content
+            const urlRegex = /https?:\/\/[^\s]+/g;
+            const urls = content.match(urlRegex) || [];
+
+            console.log(`🔍 Step 2: Scraping ${urls.length} detected link(s)...`);
+
+            if (urls.length === 0) {
+                console.log('⚠️ No links detected, falling back to standard generation...');
+                // Return simple content without scraping
+                return {
+                    content: [{
+                        type: "text",
+                        text: "No links detected in your content. Please include a GitHub URL or other link to scrape and enhance your content."
+                    }],
+                    isError: false
+                };
+            }
+
+            // Scrape the detected links (NO authentication needed)
+            const scrapedData = await tools.linkScrapingTools.scrapeLinks(
+                urls,
+                userId || 'anonymous',
+                {
+                    timeout: 15000,
+                    maxContentLength: 6000,
+                    followRedirects: true,
+                    cacheResults: true
+                }
+            );
+
+            console.log(`🎉 Successfully scraped ${scrapedData.filter((d: any) => d.status === 'success').length} link(s)`);
+
+            // Enhanced user context
+            const enhancedContext = {
+                name: userContext?.name || 'Professional',
+                role: userContext?.role,
+                industry: userContext?.industry,
+                previousPosts: userContext?.previousPosts || []
+            };
+
+            console.log('🧠 Step 3: Generating enhanced content with scraped insights...');
+
+            // Use AI Orchestrator with scraped data
+            const orchestrationResult = await tools.aiOrchestrator.processContentWithScrapedData(
+                content,
+                scrapedData,
+                enhancedContext
+            );
+
+            console.log('✅ Enhanced content generation completed:', {
+                linksDetected: urls.length,
+                successfulScrapes: scrapedData.filter((d: any) => d.status === 'success').length,
+                confidence: orchestrationResult.confidence,
+                modelUsed: orchestrationResult.metadata.modelUsed
+            });
+
+            return {
+                content: [{
+                    type: "text",
+                    text: orchestrationResult.generatedContent
+                }],
+                isError: false
+            };
+
+        } catch (error: any) {
+            console.error('Intelligent content with links error:', error);
+
+            // Fallback to simple response
+            return {
+                content: [{
+                    type: "text",
+                    text: `Error processing links: ${error.message}. Please try again or use the create-post tool directly.`
+                }],
+                isError: true
             };
         }
     }
