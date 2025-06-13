@@ -16,6 +16,8 @@ interface SaveDraftModalProps {
     initialContent?: string;
     initialPostType?: 'basic' | 'single' | 'multiple';
     initialTitle?: string;
+    draftId?: string; // For update mode
+    isEditMode?: boolean; // Whether we're updating an existing draft
 }
 
 const SaveDraftModal: React.FC<SaveDraftModalProps> = ({
@@ -23,9 +25,11 @@ const SaveDraftModal: React.FC<SaveDraftModalProps> = ({
     onClose,
     initialContent = '',
     initialPostType = 'basic',
-    initialTitle = ''
+    initialTitle = '',
+    draftId,
+    isEditMode = false
 }) => {
-    const { saveDraft } = useDrafts();
+    const { saveDraft, updateDraft } = useDrafts();
 
     const [title, setTitle] = useState(initialTitle);
     const [content, setContent] = useState(initialContent);
@@ -91,8 +95,18 @@ const SaveDraftModal: React.FC<SaveDraftModalProps> = ({
         setError(null);
 
         try {
-            await saveDraft(title, content, postType, tags);
-            setSuccess('Draft saved successfully!');
+            if (isEditMode && draftId) {
+                await updateDraft(draftId, {
+                    title,
+                    content,
+                    postType,
+                    tags
+                });
+                setSuccess('Draft updated successfully!');
+            } else {
+                await saveDraft(title, content, postType, tags);
+                setSuccess('Draft saved successfully!');
+            }
 
             // Close modal after success
             setTimeout(() => {
@@ -100,7 +114,7 @@ const SaveDraftModal: React.FC<SaveDraftModalProps> = ({
             }, 2000);
 
         } catch (err) {
-            setError(err instanceof Error ? err.message : 'Failed to save draft');
+            setError(err instanceof Error ? err.message : `Failed to ${isEditMode ? 'update' : 'save'} draft`);
         } finally {
             setIsSubmitting(false);
         }
@@ -124,8 +138,12 @@ const SaveDraftModal: React.FC<SaveDraftModalProps> = ({
                             <FileText className="w-6 h-6 text-linkedin-600" />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold text-gray-900">Save Draft</h2>
-                            <p className="text-sm text-gray-600">Save your content for later</p>
+                            <h2 className="text-xl font-bold text-gray-900">
+                                {isEditMode ? 'Update Draft' : 'Save Draft'}
+                            </h2>
+                            <p className="text-sm text-gray-600">
+                                {isEditMode ? 'Update your draft content' : 'Save your content for later'}
+                            </p>
                         </div>
                     </div>
                     <button
@@ -215,8 +233,8 @@ const SaveDraftModal: React.FC<SaveDraftModalProps> = ({
                                     onClick={() => setPostType(type.value as any)}
                                     disabled={isSubmitting}
                                     className={`p-3 rounded-xl border-2 transition-all duration-200 text-left ${postType === type.value
-                                            ? 'border-linkedin-500 bg-linkedin-50'
-                                            : 'border-gray-200 hover:border-gray-300'
+                                        ? 'border-linkedin-500 bg-linkedin-50'
+                                        : 'border-gray-200 hover:border-gray-300'
                                         } disabled:opacity-50`}
                                 >
                                     <div className="font-medium text-sm">{type.label}</div>
@@ -301,12 +319,12 @@ const SaveDraftModal: React.FC<SaveDraftModalProps> = ({
                             {isSubmitting ? (
                                 <>
                                     <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Saving...</span>
+                                    <span>{isEditMode ? 'Updating...' : 'Saving...'}</span>
                                 </>
                             ) : (
                                 <>
                                     <Save className="w-4 h-4" />
-                                    <span>Save Draft</span>
+                                    <span>{isEditMode ? 'Update Draft' : 'Save Draft'}</span>
                                 </>
                             )}
                         </button>

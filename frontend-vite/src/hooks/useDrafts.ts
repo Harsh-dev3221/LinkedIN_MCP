@@ -70,12 +70,30 @@ export const useDrafts = () => {
             try {
                 const jsonResponse = JSON.parse(responseText);
                 if (jsonResponse.success && jsonResponse.data) {
-                    parsedDrafts = jsonResponse.data;
+                    // Use the full draft data from JSON response
+                    parsedDrafts = jsonResponse.data.map((draft: any) => ({
+                        id: draft.id,
+                        user_id: draft.user_id,
+                        title: draft.title || 'Untitled Draft',
+                        content: draft.content, // Full content, not truncated
+                        post_type: draft.post_type,
+                        tags: draft.tags || [],
+                        created_at: draft.created_at,
+                        updated_at: draft.updated_at
+                    }));
+                } else if (jsonResponse.success === false) {
+                    throw new Error(jsonResponse.error || 'Failed to fetch drafts');
                 } else {
+                    // Fallback to text parsing for backward compatibility
                     parsedDrafts = parseDraftsResponse(responseText);
                 }
-            } catch {
-                parsedDrafts = parseDraftsResponse(responseText);
+            } catch (parseError) {
+                // If JSON parsing fails, try text parsing as fallback
+                if (parseError instanceof SyntaxError) {
+                    parsedDrafts = parseDraftsResponse(responseText);
+                } else {
+                    throw parseError;
+                }
             }
 
             setDrafts(parsedDrafts);
@@ -140,6 +158,14 @@ export const useDrafts = () => {
         return await draftService.getDraft(user.id, draftId);
     }, [draftService, user?.id]);
 
+    const postDraft = useCallback(async (content: string, postType: 'basic' | 'single' | 'multiple' = 'basic') => {
+        if (!draftService || !user?.id) {
+            throw new Error('Service not available');
+        }
+
+        return await draftService.postDraft(user.id, content, postType);
+    }, [draftService, user?.id]);
+
     // Auto-fetch on mount - only when user and draftService are available
     useEffect(() => {
         if (user?.id && draftService) {
@@ -156,6 +182,7 @@ export const useDrafts = () => {
         updateDraft,
         deleteDraft,
         getDraft,
+        postDraft,
         refresh: fetchDrafts
     };
 };

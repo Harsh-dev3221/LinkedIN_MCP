@@ -9,6 +9,7 @@ import AuthPage from './components/AuthPage';
 import AuthCallback from './components/AuthCallback';
 import DashboardLayout from './components/dashboard/DashboardLayout';
 import NewUnifiedPostCreator from './components/NewUnifiedPostCreator';
+import DraftsPage from './components/dashboard/DraftsPage';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Professional theme with beige, blue, and orange accents
@@ -219,6 +220,14 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <NewUnifiedPostCreator />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/drafts"
+          element={
+            <ProtectedRoute>
+              <DraftsPage />
             </ProtectedRoute>
           }
         />

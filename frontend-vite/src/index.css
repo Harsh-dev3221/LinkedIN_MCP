@@ -41,3 +41,56 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* Modal and overlay fixes */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.modal-content {
+    position: relative;
+    z-index: 10000;
+    max-height: 90vh;
+    overflow: hidden;
+    width: 100%;
+    max-width: 56rem;
+    /* 4xl */
+}
+
+/* Ensure buttons are always visible */
+.modal-header-buttons {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.modal-header-buttons button {
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+/* Fix for potential MUI conflicts */
+.MuiModal-root {
+    z-index: 9998 !important;
+}
+
+.MuiDialog-root {
+    z-index: 9998 !important;
+}
+
+/* Ensure proper text rendering */
+.draft-content {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+}

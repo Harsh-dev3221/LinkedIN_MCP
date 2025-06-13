@@ -115,6 +115,33 @@ export class DraftService {
             draftId
         });
     }
+
+    async postDraft(userId: string, content: string, postType: 'basic' | 'single' | 'multiple' = 'basic') {
+        // Determine which tool to use based on post type
+        switch (postType) {
+            case 'basic':
+                return await this.mcpClient.callTool('create-post', {
+                    content,
+                    userId
+                });
+
+            case 'single':
+                // Note: Single image posts require image data
+                // Since drafts don't store images, we'll treat as basic for now
+                throw new Error('Single image posts require image upload. Please use the post creator for image posts.');
+
+            case 'multiple':
+                // Note: Multiple image posts require image data
+                // Since drafts don't store images, we'll treat as basic for now
+                throw new Error('Multiple image posts require image upload. Please use the post creator for image posts.');
+
+            default:
+                return await this.mcpClient.callTool('create-post', {
+                    content,
+                    userId
+                });
+        }
+    }
 }
 
 // Scheduling Service

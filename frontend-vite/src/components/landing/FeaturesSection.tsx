@@ -15,68 +15,68 @@ const FeaturesSection: React.FC = () => {
     const features = [
         {
             icon: Brain,
-            title: "AI-Powered Content Generation",
-            description: "Transform your ideas into engaging LinkedIn posts with advanced AI that understands professional tone and industry best practices.",
+            title: "Smart AI Enhancement",
+            description: "Powered by Gemini 2.0 Flash & Gemma-3-27b-it for superior content generation. Automatically detects links and enhances posts with scraped insights.",
             color: "linkedin",
             isLive: true
         },
         {
             icon: Clock,
-            title: "10x Faster Creation",
-            description: "Generate professional LinkedIn content in seconds, not hours. Save time while maintaining quality and authenticity.",
+            title: "Link Scraping & Analysis",
+            description: "Automatically detects GitHub repos, articles, and websites in your text. Scrapes content and integrates insights for richer posts.",
             color: "orange",
             isLive: true
         },
         {
             icon: MessageSquare,
-            title: "Multi-Format Support",
-            description: "Create text posts, single image posts, and multi-image carousels - all optimized for LinkedIn publishing.",
+            title: "Multi-Modal Content Creation",
+            description: "Create text posts, single image posts, and multi-image carousels. Advanced image analysis with contextual content generation.",
             color: "linkedin",
             isLive: true
         },
         {
             icon: TrendingUp,
-            title: "Engagement Optimization",
-            description: "Advanced engagement analytics and optimization features to maximize your post performance.",
+            title: "Draft Management System",
+            description: "Save, edit, and organize your content drafts. Never lose your ideas with our comprehensive draft management system.",
             color: "orange",
-            isLive: false
+            isLive: true
         },
         {
             icon: Target,
-            title: "Audience Targeting",
-            description: "Smart audience targeting and content personalization based on your professional network.",
+            title: "Post Scheduling & Analytics",
+            description: "Schedule posts for future publishing and track token usage with detailed analytics. Monitor your content performance.",
             color: "linkedin",
-            isLive: false
+            isLive: true
         },
         {
             icon: BarChart3,
-            title: "Performance Analytics",
-            description: "Comprehensive analytics dashboard with detailed insights and performance tracking.",
+            title: "Professional Content Moderation",
+            description: "Advanced filtering system prevents inappropriate content. Ensures all posts meet LinkedIn's professional standards.",
             color: "orange",
-            isLive: false
+            isLive: true
         }
     ];
 
     const benefits = [
         {
             icon: Rocket,
-            title: "Save Time & Effort",
-            description: "Generate professional LinkedIn content in seconds instead of spending hours writing."
+            title: "Smart Enhancement",
+            description: "Automatically detects links and scrapes content for richer, more contextual LinkedIn posts."
         },
         {
             icon: Shield,
-            title: "Maintain Authenticity",
-            description: "AI-generated content that sounds like you, preserving your unique voice and style."
+            title: "Production Ready",
+            description: "All features are live and tested. Draft management, scheduling, and analytics included."
         },
         {
             icon: Brain,
-            title: "Professional Quality",
-            description: "Advanced AI ensures your content meets LinkedIn's professional standards and best practices."
+            title: "Multi-Modal AI",
+            description: "Gemini 2.0 Flash + Gemma-3-27b-it for superior text generation and image analysis."
         },
         {
             icon: Zap,
-            title: "Easy to Use",
-            description: "Simple interface that works - just add your ideas and let AI create engaging posts."
+            title: "Complete Workflow",
+            description: "From content creation to scheduling and analytics - everything you need in one platform."
         }
     ];
 
@@ -90,7 +90,7 @@ const FeaturesSection: React.FC = () => {
                 <div className="mb-16 text-center">
                     <div className="inline-flex items-center px-4 py-2 mb-6 space-x-2 border rounded-full bg-gradient-to-r from-orange-50 to-linkedin-50 border-orange-200/50">
                         <span className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></span>
-                        <span className="text-sm font-medium text-gray-700">🚀 Available Features</span>
+                        <span className="text-sm font-medium text-gray-700">🚀 Live in Production</span>
                     </div>
                     <h2 className="mb-6 text-4xl font-bold text-gray-900 lg:text-5xl">
                         Built for the Future of
@@ -102,7 +102,7 @@ const FeaturesSection: React.FC = () => {
                         }}> LinkedIn Content</span>
                     </h2>
                     <p className="max-w-3xl mx-auto text-xl leading-relaxed text-gray-600">
-                        Create professional LinkedIn content with AI assistance. Core features are live in beta, with advanced analytics and targeting coming soon.
+                        Create professional LinkedIn content with AI assistance. All core features are live and ready to use, with advanced link scraping and multi-modal content generation.
                     </p>
                 </div>
 
@@ -150,7 +150,7 @@ const FeaturesSection: React.FC = () => {
                             Why Choose PostWizz?
                         </h3>
                         <p className="max-w-2xl mx-auto text-lg font-medium text-gray-700">
-                            Simple, effective AI-powered LinkedIn content creation that actually works.
+                            The only LinkedIn content creator with smart link scraping, multi-modal AI, and complete workflow management.
                         </p>
                     </div>
 
@@ -183,7 +183,7 @@ const FeaturesSection: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Beta Stats Section */}
+                {/* Production Stats Section */}
                 <div className="grid grid-cols-1 gap-8 mt-20 md:grid-cols-3">
                     <div className="p-6 text-center border-2 bg-white/80 backdrop-blur-sm rounded-2xl border-linkedin-200/60 shadow-soft">
                         <div className="mb-2 text-4xl font-bold lg:text-5xl" style={{
@@ -192,15 +192,15 @@ const FeaturesSection: React.FC = () => {
                             WebkitTextFillColor: 'transparent',
                             backgroundClip: 'text'
                         }}>
-                            Beta
+                            Live
                         </div>
-                        <p className="font-semibold text-gray-800">Early Access Program</p>
+                        <p className="font-semibold text-gray-800">Production Ready</p>
                     </div>
                     <div className="p-6 text-center border-2 bg-white/80 backdrop-blur-sm rounded-2xl border-orange-200/60 shadow-soft">
                         <div className="mb-2 text-4xl font-bold text-transparent lg:text-5xl bg-gradient-to-r from-orange-500 to-orange-600 bg-clip-text">
-                            2024
+                            2025
                         </div>
-                        <p className="font-semibold text-gray-800">Launch Year</p>
+                        <p className="font-semibold text-gray-800">Live in Production</p>
                     </div>
                     <div className="p-6 text-center border-2 bg-white/80 backdrop-blur-sm rounded-2xl border-linkedin-200/60 shadow-soft">
                         <div className="mb-2 text-4xl font-bold lg:text-5xl" style={{

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDashboardData } from '../../hooks/useDashboardData';
 import AnalyticsPage from '../analytics/AnalyticsPage';
@@ -34,6 +35,7 @@ interface DashboardLayoutProps {
 }
 
 const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
+    const navigate = useNavigate();
     const {
         user,
         tokenStatus,
@@ -174,7 +176,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
     const sidebarItems = [
         { icon: BarChart3, label: 'Dashboard', active: true, locked: false, action: null },
         { icon: Calendar, label: 'Schedule', active: false, locked: false, action: () => setShowScheduleModal(true) },
-        { icon: FileText, label: 'Drafts', active: false, locked: true, action: null },
+        { icon: FileText, label: 'Drafts', active: false, locked: false, action: () => navigate('/drafts') },
         { icon: Users, label: 'Audience', active: false, locked: true, action: null },
         { icon: Activity, label: 'Analytics', active: false, locked: true, action: null },
         { icon: Target, label: 'Goals', active: false, locked: true, action: null },
@@ -620,7 +622,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
                             <ScheduledPostsCard onViewAll={() => setShowScheduledPosts(true)} />
 
                             {/* Drafts */}
-                            <DraftsCard onViewAll={() => {/* TODO: Add drafts page */ }} />
+                            <DraftsCard onViewAll={() => navigate('/drafts')} />
                         </div>
 
                         {/* Right Column - Quick Actions & Status */}

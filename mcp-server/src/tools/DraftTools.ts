@@ -87,26 +87,35 @@ export class DraftTools {
                 return {
                     content: [{
                         type: "text",
-                        text: "📝 No drafts found. Create your first draft to get started!"
+                        text: JSON.stringify({
+                            success: true,
+                            data: [],
+                            count: 0
+                        })
                     }]
                 };
             }
 
-            const draftsList = drafts.map((draft, index) => {
-                const preview = draft.content.substring(0, 150);
-                const tags = draft.tags && draft.tags.length > 0 ? `\n   Tags: ${draft.tags.join(', ')}` : '';
-                return `${offset + index + 1}. **${draft.title}**
-   ID: ${draft.id}
-   Type: ${draft.post_type}
-   Created: ${new Date(draft.created_at).toLocaleDateString()}
-   Updated: ${new Date(draft.updated_at).toLocaleDateString()}${tags}
-   Preview: ${preview}${draft.content.length > 150 ? '...' : ''}`;
-            }).join('\n\n');
+            // Return full draft data as JSON instead of formatted text
+            const draftsData = drafts.map(draft => ({
+                id: draft.id,
+                user_id: draft.user_id,
+                title: draft.title,
+                content: draft.content, // Return full content, not truncated preview
+                post_type: draft.post_type,
+                tags: draft.tags || [],
+                created_at: draft.created_at,
+                updated_at: draft.updated_at
+            }));
 
             return {
                 content: [{
                     type: "text",
-                    text: `📝 **Your Drafts** (${count} total)\n\n${draftsList}\n\n💡 Use the draft ID to edit, delete, or publish a specific draft.`
+                    text: JSON.stringify({
+                        success: true,
+                        data: draftsData,
+                        count: count || 0
+                    })
                 }]
             };
         } catch (error) {
@@ -115,7 +124,10 @@ export class DraftTools {
                 isError: true,
                 content: [{
                     type: "text",
-                    text: `Failed to fetch drafts: ${error instanceof Error ? error.message : 'Unknown error'}`
+                    text: JSON.stringify({
+                        success: false,
+                        error: error instanceof Error ? error.message : 'Unknown error'
+                    })
                 }]
             };
         }

@@ -301,4 +301,34 @@ export class LinkedInTokenService {
             return null;
         }
     }
+
+    /**
+     * Get LinkedIn connection by MCP token ID
+     */
+    async getConnectionByMcpToken(mcpTokenId: string): Promise<{ user_id: string } | null> {
+        try {
+            console.log(`Getting LinkedIn connection for MCP token: ${mcpTokenId}`);
+
+            const { data, error } = await this.supabase
+                .from('linkedin_connections')
+                .select('user_id')
+                .eq('mcp_token_id', mcpTokenId)
+                .single();
+
+            if (error) {
+                if (error.code === 'PGRST116') {
+                    console.log(`No LinkedIn connection found for MCP token: ${mcpTokenId}`);
+                    return null;
+                }
+                console.error('Error getting LinkedIn connection by MCP token:', error);
+                return null;
+            }
+
+            console.log(`LinkedIn connection found for MCP token: ${mcpTokenId}`);
+            return data;
+        } catch (error) {
+            console.error('Error in getConnectionByMcpToken:', error);
+            return null;
+        }
+    }
 }

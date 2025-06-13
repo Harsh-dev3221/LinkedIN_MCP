@@ -71,8 +71,8 @@ export class PostScheduler {
             console.log(`📅 Found ${duePosts.length} posts that are due for publishing`);
 
             // Process LinkedIn connections concurrently for better performance
-            const postsWithConnections = [];
-            const postsWithoutConnections = [];
+            const postsWithConnections: any[] = [];
+            const postsWithoutConnections: any[] = [];
 
             // Use Promise.allSettled for concurrent processing with error handling
             const connectionPromises = duePosts.map(async (post) => {
@@ -249,9 +249,9 @@ export class PostScheduler {
             // Publish the post using LinkedIn API
             const linkedinTokens = {
                 access_token: linkedinConnection.linkedin_access_token,
-                refresh_token: null,
-                expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                scope: ['openid', 'profile', 'email', 'w_member_social'] // Add OpenID Connect scopes
+                token_type: 'Bearer',
+                refresh_token: undefined,
+                scope: 'openid profile email w_member_social' // Add OpenID Connect scopes as string
             };
 
             // Use the UGC post creation method for text posts

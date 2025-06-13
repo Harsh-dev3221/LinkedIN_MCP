@@ -192,13 +192,9 @@ export class AuthMiddleware {
             }
 
             // Get user ID from LinkedIn connection using MCP token ID
-            const { data: connection, error } = await this.linkedinTokenService.supabase
-                .from('linkedin_connections')
-                .select('user_id')
-                .eq('mcp_token_id', mcpTokenId)
-                .single();
+            const connection = await this.linkedinTokenService.getConnectionByMcpToken(mcpTokenId);
 
-            if (error || !connection) {
+            if (!connection) {
                 return res.status(401).json({
                     error: 'Unauthorized',
                     message: 'MCP token not found or expired'

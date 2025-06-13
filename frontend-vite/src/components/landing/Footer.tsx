@@ -2,7 +2,7 @@ import React from 'react';
 import { Sparkles, Mail, Linkedin, Twitter, Github, Youtube } from 'lucide-react';
 
 const Footer: React.FC = () => {
-    const currentYear = new Date().getFullYear();
+    const currentYear = 2025;
 
     const footerLinks = {
         product: [

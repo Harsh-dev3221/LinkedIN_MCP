@@ -26,7 +26,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
                         {/* Badge */}
                         <div className="inline-flex items-center space-x-2 bg-gradient-to-r from-linkedin-50 to-orange-50 border border-linkedin-200/50 rounded-full px-4 py-2 mb-8">
                             <Sparkles className="w-4 h-4 text-linkedin-600" />
-                            <span className="text-sm font-medium text-linkedin-700">AI-Powered LinkedIn Content Creation</span>
+                            <span className="text-sm font-medium text-linkedin-700">🚀 Live in Production - Smart AI Enhancement</span>
                         </div>
 
                         {/* Main Headline */}
@@ -46,23 +46,23 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
 
                         {/* Subheadline */}
                         <p className="text-lg lg:text-xl text-gray-600 mb-8 leading-relaxed max-w-2xl lg:max-w-none">
-                            Create professional LinkedIn content in seconds with AI assistance.
-                            Save time while maintaining quality and authenticity in your posts.
+                            Create professional LinkedIn content in seconds with advanced AI.
+                            Smart link scraping, image analysis, and multi-modal content generation - all live and ready to use.
                         </p>
 
                         {/* Key Benefits */}
                         <div className="flex flex-wrap gap-4 mb-8 justify-center lg:justify-start">
                             <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-soft">
                                 <TrendingUp className="w-4 h-4 text-linkedin-600" />
-                                <span className="text-sm font-medium text-gray-700">Fast Content Creation</span>
+                                <span className="text-sm font-medium text-gray-700">Smart Link Scraping</span>
                             </div>
                             <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-soft">
                                 <Users className="w-4 h-4 text-orange-600" />
-                                <span className="text-sm font-medium text-gray-700">Professional Quality</span>
+                                <span className="text-sm font-medium text-gray-700">Multi-Modal AI</span>
                             </div>
                             <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-sm rounded-full px-4 py-2 shadow-soft">
                                 <Zap className="w-4 h-4 text-linkedin-600" />
-                                <span className="text-sm font-medium text-gray-700">Easy to Use</span>
+                                <span className="text-sm font-medium text-gray-700">Live & Ready</span>
                             </div>
                         </div>
 
@@ -95,7 +95,7 @@ const HeroSection: React.FC<HeroSectionProps> = ({ onGetStarted }) => {
                                 }}
                             >
                                 <Sparkles className="w-5 h-5" />
-                                <span className="text-lg">Start Creating for Free</span>
+                                <span className="text-lg">Try PostWizz Live</span>
                                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                             </button>
                             <button type="button" className="text-gray-900  px-8 py-4 rounded-2xl font-semibold border-2 border-gray-800 hover:border-gray-700 hover:bg-orange-50 transition-all duration-300 shadow-soft hover:shadow-lg">

@@ -21,7 +21,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import TokenIcon from '@mui/icons-material/Token';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SaveIcon from '@mui/icons-material/Save';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import GradientBackground from './GradientBackground';
 import PostAI from './PostAI';
@@ -80,6 +80,7 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
 const NewUnifiedPostCreator = () => {
     const { user, session, tokenStatus, refreshTokenStatus, mcpToken, linkedinConnected, linkedinStatusLoading, refreshLinkedInStatus } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
 
     // UI State
     const [activeStep, setActiveStep] = useState(0);
@@ -105,6 +106,15 @@ const NewUnifiedPostCreator = () => {
 
     // Steps in the process
     const steps = ['Create Content', 'Review & Publish'];
+
+    // Handle initial content from navigation state (draft editing)
+    useEffect(() => {
+        const state = location.state as { initialContent?: string, draftId?: string, editMode?: boolean } | null;
+        if (state?.initialContent && state?.editMode) {
+            setGeneratedContent(state.initialContent);
+            setActiveStep(1); // Go directly to review step for editing
+        }
+    }, [location.state]);
 
     // Check authentication and update character count
     useEffect(() => {
@@ -408,7 +418,7 @@ const NewUnifiedPostCreator = () => {
                     disabled={isProcessing || charCount > MAX_CHARS}
                     startIcon={<SaveIcon />}
                 >
-                    Save Draft
+                    {location.state?.editMode ? 'Update Draft' : 'Save Draft'}
                 </Button>
                 <Button
                     variant="outlined"
@@ -442,15 +452,15 @@ const NewUnifiedPostCreator = () => {
 
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
                 <Typography variant="h4" sx={{ textAlign: 'center', flex: 1 }}>
-                    LinkedIn Post Generator
+                    {location.state?.editMode ? 'Edit Draft' : 'LinkedIn Post Generator'}
                 </Typography>
                 <Button
                     variant="outlined"
-                    onClick={() => navigate('/dashboard')}
+                    onClick={() => navigate(location.state?.editMode ? '/drafts' : '/dashboard')}
                     startIcon={<ArrowBackIcon />}
                     size="small"
                 >
-                    Dashboard
+                    {location.state?.editMode ? 'Back to Drafts' : 'Dashboard'}
                 </Button>
             </Box>
 
@@ -568,6 +578,8 @@ const NewUnifiedPostCreator = () => {
                 onClose={() => setShowSaveDraftModal(false)}
                 initialContent={generatedContent}
                 initialPostType={imageMode === 'multi' ? 'multiple' : imageMode === 'single' ? 'single' : 'basic'}
+                draftId={location.state?.draftId}
+                isEditMode={location.state?.editMode || false}
             />
         </Box>
     );
