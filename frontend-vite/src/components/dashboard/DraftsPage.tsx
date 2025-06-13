@@ -106,8 +106,11 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
                     <div className="flex items-center justify-between h-16">
                         <div className="flex items-center space-x-4">
                             <button
+                                type="button"
                                 onClick={handleBack}
                                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                                title="Back to Dashboard"
+                                aria-label="Back to Dashboard"
                             >
                                 <ArrowLeft className="w-5 h-5" />
                             </button>
@@ -126,13 +129,17 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
 
                         <div className="flex items-center space-x-3">
                             <button
+                                type="button"
                                 onClick={() => refresh(true)}
                                 disabled={loading}
                                 className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50"
+                                title="Refresh Drafts"
+                                aria-label="Refresh Drafts"
                             >
                                 <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
                             </button>
                             <button
+                                type="button"
                                 onClick={() => navigate('/create')}
                                 className="flex items-center space-x-2 px-4 py-2 bg-linkedin-600 hover:bg-linkedin-700 text-white rounded-xl font-medium transition-colors"
                             >
@@ -163,11 +170,15 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
 
                         {/* Type Filter */}
                         <div className="relative">
+                            <label htmlFor="type-filter" className="sr-only">Filter drafts by post type</label>
                             <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                             <select
+                                id="type-filter"
                                 value={typeFilter}
                                 onChange={(e) => setTypeFilter(e.target.value as any)}
                                 className="pl-10 pr-8 py-3 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-linkedin-500 focus:border-transparent transition-all appearance-none cursor-pointer"
+                                title="Filter drafts by post type"
+                                aria-label="Filter drafts by post type"
                             >
                                 <option value="all">All Types</option>
                                 <option value="basic">Basic Posts</option>
@@ -217,6 +228,7 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
                             }
                         </p>
                         <button
+                            type="button"
                             onClick={() => navigate('/create')}
                             className="inline-flex items-center space-x-2 px-6 py-3 bg-linkedin-600 hover:bg-linkedin-700 text-white rounded-xl font-medium transition-colors"
                         >
@@ -237,8 +249,11 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
                                 {/* Action Menu Button */}
                                 <div className="absolute top-4 right-4">
                                     <button
+                                        type="button"
                                         onClick={() => setShowActionMenu(showActionMenu === draft.id ? null : draft.id)}
                                         className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                        title="More actions"
+                                        aria-label="More actions"
                                     >
                                         <MoreVertical className="w-4 h-4" />
                                     </button>
@@ -247,6 +262,7 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
                                     {showActionMenu === draft.id && (
                                         <div className="absolute right-0 top-10 w-48 bg-white rounded-xl shadow-lg border border-gray-200 py-2 z-10">
                                             <button
+                                                type="button"
                                                 onClick={() => handleViewDraft(draft)}
                                                 className="w-full flex items-center space-x-3 px-4 py-2 text-left hover:bg-gray-50 transition-colors"
                                             >
@@ -254,6 +270,7 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
                                                 <span>View & Edit</span>
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={() => handleDeleteDraft(draft.id)}
                                                 disabled={isDeleting === draft.id}
                                                 className="w-full flex items-center space-x-3 px-4 py-2 text-left hover:bg-red-50 text-red-600 transition-colors disabled:opacity-50"
@@ -315,6 +332,7 @@ const DraftsPage: React.FC<DraftsPageProps> = () => {
                                     {/* Actions */}
                                     <div className="flex items-center space-x-2">
                                         <button
+                                            type="button"
                                             onClick={() => handleViewDraft(draft)}
                                             className="flex-1 flex items-center justify-center space-x-2 px-3 py-2 bg-linkedin-50 hover:bg-linkedin-100 text-linkedin-700 rounded-lg font-medium transition-colors"
                                         >
