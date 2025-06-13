@@ -32,19 +32,16 @@ interface DetectedLink {
 interface LinkScrapingIndicatorProps {
     text: string;
     onLinksDetected: (links: DetectedLink[]) => void;
-    onScrapingComplete: (scrapedData: any[]) => void;
     isProcessing: boolean;
 }
 
 const LinkScrapingIndicator: React.FC<LinkScrapingIndicatorProps> = ({
     text,
     onLinksDetected,
-    onScrapingComplete,
     isProcessing
 }) => {
     const [detectedLinks, setDetectedLinks] = useState<DetectedLink[]>([]);
     const [scrapingProgress, setScrapingProgress] = useState<Record<string, 'pending' | 'processing' | 'success' | 'error'>>({});
-    const [scrapedData, setScrapedData] = useState<any[]>([]);
     const [isExpanded, setIsExpanded] = useState(false);
     const [showProgress, setShowProgress] = useState(false);
 
@@ -53,7 +50,6 @@ const LinkScrapingIndicator: React.FC<LinkScrapingIndicatorProps> = ({
         if (!text || text.trim().length === 0) {
             setDetectedLinks([]);
             setScrapingProgress({});
-            setScrapedData([]);
             setShowProgress(false);
             return;
         }
@@ -61,11 +57,11 @@ const LinkScrapingIndicator: React.FC<LinkScrapingIndicatorProps> = ({
         // Simple URL detection regex
         const urlRegex = /https?:\/\/[^\s]+/gi;
         const matches = Array.from(text.matchAll(urlRegex));
-        
-        const links: DetectedLink[] = matches.map((match, index) => {
+
+        const links: DetectedLink[] = matches.map((match) => {
             const url = match[0];
             const type = getUrlType(url);
-            
+
             return {
                 url,
                 type,
@@ -177,7 +173,7 @@ const LinkScrapingIndicator: React.FC<LinkScrapingIndicatorProps> = ({
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <LinkIcon color="primary" fontSize="small" />
                         <Typography variant="subtitle2" color="primary" fontWeight="medium">
-                            {isProcessing ? 
+                            {isProcessing ?
                                 `🔍 Finding best context for you... Scraping ${detectedLinks.length} link(s)` :
                                 `🔗 ${detectedLinks.length} link(s) detected`
                             }
@@ -194,13 +190,13 @@ const LinkScrapingIndicator: React.FC<LinkScrapingIndicatorProps> = ({
 
                 {isProcessing && (
                     <Box sx={{ mb: 2 }}>
-                        <LinearProgress 
-                            variant="determinate" 
+                        <LinearProgress
+                            variant="determinate"
                             value={(successCount / detectedLinks.length) * 100}
                             sx={{ height: 6, borderRadius: 3 }}
                         />
                         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                            {allCompleted ? 
+                            {allCompleted ?
                                 `✅ Scraping complete! Will generate the best post for you.` :
                                 `Scraping progress: ${successCount}/${detectedLinks.length} completed`
                             }

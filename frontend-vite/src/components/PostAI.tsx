@@ -100,7 +100,6 @@ const PostAI = ({ authToken, userId, onGeneratedContent, onError, onSuccess, onT
     const [storyType, setStoryType] = useState<'journey' | 'technical' | 'achievement' | 'learning'>('journey');
     const [useIntelligentClassification, setUseIntelligentClassification] = useState(true);
     const [detectedLinks, setDetectedLinks] = useState<any[]>([]);
-    const [scrapedData, setScrapedData] = useState<any[]>([]);
 
     // Constants
     const MIN_IMAGES = 2;
@@ -460,7 +459,6 @@ My draft text to enhance: "${postText}"`,
                 <LinkScrapingIndicator
                     text={postText}
                     onLinksDetected={setDetectedLinks}
-                    onScrapingComplete={setScrapedData}
                     isProcessing={isProcessing}
                 />
 
