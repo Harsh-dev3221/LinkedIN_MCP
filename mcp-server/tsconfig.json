@@ -13,6 +13,7 @@
         "resolveJsonModule": true
     },
     "include": [
-        "src/**/*"
+        "src/**/*",
+        "test-tracking.js"
     ]
 }

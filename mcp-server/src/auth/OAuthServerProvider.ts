@@ -100,7 +100,9 @@ export interface OAuthServerProviderInterface {
 }
 
 export class OAuthServerProvider implements OAuthServerProviderInterface {
-    // Updated scopes to match LinkedIn's current best practices for OpenID Connect
+    // LinkedIn OAuth scopes - using OpenID Connect + posting permissions
+    // Note: r_basicprofile and r_liteprofile may not be available for all LinkedIn apps
+    // Using OpenID Connect scopes which provide basic profile information
     private _LINKEDIN_SCOPES = ["openid", "profile", "email", "w_member_social"];
     private _linkedinAuthClient: LinkedinAuthClient;
 
@@ -163,11 +165,19 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
         res: Response
     ) => {
         try {
-            console.log(`OAuth callback received with code: ${authorizationCode.substring(0, 10)}...`);
-            console.log(`State: ${state}`);
+            console.log('🔍 OAuth callback received with parameters:', {
+                hasCode: !!authorizationCode,
+                codeLength: authorizationCode?.length || 0,
+                codePreview: authorizationCode ? `${authorizationCode.substring(0, 10)}...` : 'undefined',
+                hasState: !!state,
+                state: state
+            });
 
             if (!authorizationCode || !state) {
-                console.error('Missing authorization code or state');
+                console.error('❌ Missing authorization code or state:', {
+                    authorizationCode: !!authorizationCode,
+                    state: !!state
+                });
                 return res.status(400).send("Bad request: Missing required parameters");
             }
 
@@ -292,15 +302,22 @@ export class OAuthServerProvider implements OAuthServerProviderInterface {
             const returnedScopes = response.data.scope || '';
             console.log('LinkedIn returned scopes:', returnedScopes);
 
-            // Check if r_liteprofile is included in the scopes
-            if (!returnedScopes.includes('r_liteprofile')) {
-                console.warn('Warning: r_liteprofile scope not granted. Profile API calls may fail.');
-            }
-
-            // Check if w_member_social is included in the scopes
+            // Check if essential scopes are included
             if (!returnedScopes.includes('w_member_social')) {
                 console.warn('Warning: w_member_social scope not granted. Post creation will fail.');
             }
+
+            // Check for OpenID Connect scopes
+            if (!returnedScopes.includes('openid')) {
+                console.warn('Warning: openid scope not granted. OpenID Connect features may be limited.');
+            }
+
+            if (!returnedScopes.includes('profile')) {
+                console.warn('Warning: profile scope not granted. Profile information may be limited.');
+            }
+
+            // Note: r_basicprofile and r_liteprofile are not requested as they may not be available
+            // for all LinkedIn applications. We rely on OpenID Connect for profile information.
 
             return {
                 access_token: response.data.access_token,

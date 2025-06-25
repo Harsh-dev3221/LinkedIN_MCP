@@ -10,6 +10,7 @@ import AuthCallback from './components/AuthCallback';
 import DashboardLayout from './components/dashboard/DashboardLayout';
 import NewUnifiedPostCreator from './components/NewUnifiedPostCreator';
 import DraftsPage from './components/dashboard/DraftsPage';
+import PostManagementDashboard from './components/dashboard/PostManagementDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
 
 // Professional theme with beige, blue, and orange accents
@@ -228,6 +229,16 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <DraftsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/posts"
+          element={
+            <ProtectedRoute>
+              <div className="min-h-screen bg-gradient-to-br from-beige-50 via-white to-linkedin-50/30 p-6">
+                <PostManagementDashboard />
+              </div>
             </ProtectedRoute>
           }
         />

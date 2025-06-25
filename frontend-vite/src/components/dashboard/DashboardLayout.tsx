@@ -7,6 +7,9 @@ import ScheduledPostsCard from './ScheduledPostsCard';
 import SchedulePostModal from './SchedulePostModal';
 import ScheduledPostsPage from './ScheduledPostsPage';
 import DraftsCard from './DraftsCard';
+import LinkedInProfileShowcase from './LinkedInProfileShowcase';
+import ContentSuggestionsCard from './ContentSuggestionsCard';
+import PostManagementDashboard from './PostManagementDashboard';
 import { logger } from '../../utils/logger';
 import {
     Sparkles,
@@ -27,7 +30,8 @@ import {
     Lock,
     PanelLeftClose,
     PanelLeftOpen,
-    FileText
+    FileText,
+    Edit3
 } from 'lucide-react';
 
 interface DashboardLayoutProps {
@@ -64,6 +68,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
     const [showAnalytics, setShowAnalytics] = useState(false);
     const [showScheduleModal, setShowScheduleModal] = useState(false);
     const [showScheduledPosts, setShowScheduledPosts] = useState(false);
+    const [showPostManagement, setShowPostManagement] = useState(false);
 
     // Force refresh LinkedIn status when component mounts
     useEffect(() => {
@@ -174,7 +179,8 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
     ];
 
     const sidebarItems = [
-        { icon: BarChart3, label: 'Dashboard', active: true, locked: false, action: null },
+        { icon: BarChart3, label: 'Dashboard', active: !showPostManagement, locked: false, action: () => setShowPostManagement(false) },
+        { icon: Edit3, label: 'Manage Posts', active: showPostManagement, locked: false, action: () => setShowPostManagement(true) },
         { icon: Calendar, label: 'Schedule', active: false, locked: false, action: () => setShowScheduleModal(true) },
         { icon: FileText, label: 'Drafts', active: false, locked: false, action: () => navigate('/drafts') },
         { icon: Users, label: 'Audience', active: false, locked: true, action: null },
@@ -190,6 +196,124 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
 
     if (showScheduledPosts) {
         return <ScheduledPostsPage onBack={() => setShowScheduledPosts(false)} />;
+    }
+
+    if (showPostManagement) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-beige-50 via-white to-linkedin-50/30">
+                {/* Background Elements */}
+                <div className="absolute inset-0 bg-gradient-to-br from-beige-50 via-white to-linkedin-50/30"></div>
+                <div className="absolute top-20 left-10 w-72 h-72 bg-orange-100/20 rounded-full blur-3xl animate-float"></div>
+                <div className="absolute bottom-20 right-10 w-96 h-96 bg-linkedin-100/20 rounded-full blur-3xl animate-float [animation-delay:2s]"></div>
+
+                {/* Sidebar */}
+                <div className={`fixed inset-y-0 left-0 z-50 bg-white/95 backdrop-blur-xl border-r border-gray-200 transform transition-all duration-300 ease-in-out flex flex-col h-screen ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'} ${sidebarCollapsed ? 'lg:w-20' : 'lg:w-64'} w-64`}>
+                    {/* Sidebar content - same as main dashboard */}
+                    <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
+                        <div className={`flex items-center transition-all duration-300 ${sidebarCollapsed ? 'lg:justify-center lg:w-full' : 'space-x-3'}`}>
+                            <div className="flex items-center justify-center w-10 h-10 bg-gradient-to-br from-linkedin-500 to-linkedin-600 rounded-xl shadow-linkedin flex-shrink-0">
+                                <Sparkles className="w-5 h-5 text-white" />
+                            </div>
+                            {!sidebarCollapsed && (
+                                <div className="hidden lg:flex lg:flex-col">
+                                    <span className="text-xl font-bold text-gray-900">PostWizz</span>
+                                    <span className="-mt-1 text-xs text-gray-500">LinkedIn Content Creator</span>
+                                </div>
+                            )}
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setSidebarOpen(false)}
+                            className="lg:hidden text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                            className="hidden lg:block text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                        >
+                            {sidebarCollapsed ? <PanelLeftOpen className="w-5 h-5" /> : <PanelLeftClose className="w-5 h-5" />}
+                        </button>
+                    </div>
+
+                    {/* Navigation */}
+                    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                        <nav className="flex-1 overflow-y-auto mt-6 px-3 pb-4">
+                            <div className="space-y-1">
+                                {sidebarItems.map((item, index) => (
+                                    <button
+                                        type="button"
+                                        key={index}
+                                        onClick={item.locked ? handleComingSoonFeature : item.action || undefined}
+                                        className={`w-full flex items-center rounded-xl transition-all duration-200 ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'justify-between px-3 py-3'} text-sm font-medium ${item.active ? 'bg-gradient-to-r from-linkedin-500 to-linkedin-600 text-white shadow-linkedin' : item.locked ? 'text-gray-400 hover:bg-gray-50 cursor-pointer' : 'text-gray-600 hover:bg-linkedin-50 hover:text-linkedin-700'}`}
+                                    >
+                                        <div className={`flex items-center ${sidebarCollapsed ? '' : 'mr-3'}`}>
+                                            <item.icon className={`w-5 h-5 ${sidebarCollapsed ? '' : 'mr-3'}`} />
+                                            {!sidebarCollapsed && item.label}
+                                        </div>
+                                        {!sidebarCollapsed && item.locked && (
+                                            <Lock className="w-4 h-4 text-gray-400" />
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </nav>
+                    </div>
+
+                    {/* Sign Out Button */}
+                    <div className="flex-shrink-0 p-3 border-t border-gray-200 bg-white/95 backdrop-blur-xl mt-auto">
+                        <button
+                            type="button"
+                            onClick={handleSignOut}
+                            className={`w-full flex items-center text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700 rounded-xl transition-all duration-200 border border-red-200 hover:border-red-300 shadow-sm hover:shadow-md ${sidebarCollapsed ? 'justify-center px-3 py-3' : 'px-3 py-3'}`}
+                        >
+                            <LogOut className={`w-5 h-5 ${sidebarCollapsed ? '' : 'mr-3'}`} />
+                            {!sidebarCollapsed && 'Sign Out'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* Main Content */}
+                <div className={`flex-1 flex flex-col overflow-hidden relative transition-all duration-300 ${sidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
+                    <header className="sticky top-0 z-50 border-b border-gray-100 shadow-sm bg-white/95 backdrop-blur-md px-4 sm:px-6 py-3 sm:py-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setSidebarOpen(true)}
+                                    className="lg:hidden text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                                >
+                                    <Menu className="w-6 h-6" />
+                                </button>
+                                <div>
+                                    <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">
+                                        Post Management
+                                    </h1>
+                                    <p className="text-sm lg:text-base text-gray-600">
+                                        Edit, delete, and manage your LinkedIn posts
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowPostManagement(false)}
+                                className="text-gray-500 hover:text-gray-700 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 relative">
+                        <PostManagementDashboard
+                            onPostUpdated={refreshAllData}
+                            onPostDeleted={refreshAllData}
+                        />
+                    </main>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -706,24 +830,13 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ onCreatePost }) => {
                                 </div>
                             </div>
 
-                            {/* Quick Tips */}
-                            <div className="bg-white/95 backdrop-blur-xl rounded-3xl border-2 border-orange-200 p-6 shadow-soft hover:shadow-orange hover:-translate-y-1 transition-all duration-300">
-                                <h3 className="font-bold text-gray-900 mb-4">💡 Pro Tips</h3>
-                                <div className="space-y-3">
-                                    <div className="p-3 bg-linkedin-50 rounded-2xl border border-linkedin-200 hover:scale-105 transition-transform duration-300">
-                                        <p className="text-sm font-medium text-linkedin-700">Start with basic posts</p>
-                                        <p className="text-xs text-gray-600">Get familiar with the platform using free basic posts</p>
-                                    </div>
-                                    <div className="p-3 bg-orange-50 rounded-2xl border border-orange-200 hover:scale-105 transition-transform duration-300">
-                                        <p className="text-sm font-medium text-orange-700">Use AI enhancement</p>
-                                        <p className="text-xs text-gray-600">Upgrade posts for better engagement and reach</p>
-                                    </div>
-                                    <div className="p-3 bg-beige-50 rounded-2xl border border-beige-200 hover:scale-105 transition-transform duration-300">
-                                        <p className="text-sm font-medium text-orange-700">Post consistently</p>
-                                        <p className="text-xs text-gray-600">Regular posting builds audience and engagement</p>
-                                    </div>
-                                </div>
-                            </div>
+                            {/* Content Suggestions */}
+                            <ContentSuggestionsCard />
+
+                            {/* LinkedIn Profile Showcase */}
+                            <LinkedInProfileShowcase
+                                onConnect={connectLinkedIn}
+                            />
                         </div>
                     </div>
                 </main>

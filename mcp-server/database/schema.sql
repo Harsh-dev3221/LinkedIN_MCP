@@ -83,6 +83,52 @@ CREATE TABLE linkedin_connections (
     UNIQUE(user_id, mcp_token_id)
 );
 
+-- ============================================================================
+-- TRACKED POSTS TABLE - SOLUTION FOR LINKEDIN API LIMITATIONS
+-- ============================================================================
+--
+-- LinkedIn API restricts access to user posts, profile pictures, and detailed profiles.
+-- This table tracks posts created through our app for complete post management.
+--
+-- LINKEDIN API LIMITATIONS (Based on application logs):
+-- ❌ User's existing posts (requires restricted scopes)
+-- ❌ Profile pictures (403 Forbidden - API limitation)
+-- ❌ Detailed profile data (restricted to basic OpenID Connect)
+-- ❌ Historical engagement data (not available via public API)
+--
+-- OUR SOLUTION:
+-- ✅ Track all posts created through PostWizz
+-- ✅ Store engagement data when available
+-- ✅ Enable complete edit/delete functionality
+-- ✅ Provide analytics for tracked posts
+-- ✅ Soft delete for data retention
+-- ============================================================================
+
+CREATE TABLE tracked_posts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+
+    -- LinkedIn post identifiers
+    linkedin_post_id TEXT NOT NULL, -- Short ID from LinkedIn response
+    linkedin_post_urn TEXT NOT NULL UNIQUE, -- Full URN for API operations
+
+    -- Post content and metadata
+    content TEXT NOT NULL,
+    visibility TEXT NOT NULL CHECK (visibility IN ('PUBLIC', 'CONNECTIONS', 'LOGGED_IN_MEMBERS')),
+    post_type TEXT NOT NULL CHECK (post_type IN ('text', 'image', 'video', 'article')),
+
+    -- Engagement statistics (updated when available from LinkedIn)
+    engagement_stats JSONB DEFAULT '{}',
+
+    -- Tracking metadata
+    tokens_used INTEGER DEFAULT 0,
+    is_deleted BOOLEAN DEFAULT FALSE,
+
+    -- Timestamps
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Indexes for better performance
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_provider ON users(provider, provider_id);
@@ -95,6 +141,13 @@ CREATE INDEX idx_posts_created_at ON posts(created_at);
 CREATE INDEX idx_linkedin_connections_user_id ON linkedin_connections(user_id);
 CREATE INDEX idx_linkedin_connections_mcp_token ON linkedin_connections(mcp_token_id);
 CREATE INDEX idx_linkedin_connections_expires_at ON linkedin_connections(expires_at);
+
+-- Tracked posts indexes for efficient queries
+CREATE INDEX idx_tracked_posts_user_id ON tracked_posts(user_id);
+CREATE INDEX idx_tracked_posts_linkedin_urn ON tracked_posts(linkedin_post_urn);
+CREATE INDEX idx_tracked_posts_created_at ON tracked_posts(created_at DESC);
+CREATE INDEX idx_tracked_posts_user_created ON tracked_posts(user_id, created_at DESC);
+CREATE INDEX idx_tracked_posts_not_deleted ON tracked_posts(user_id, is_deleted) WHERE is_deleted = FALSE;
 
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -110,6 +163,9 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_user_tokens_updated_at BEFORE UPDATE ON user_tokens
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_tracked_posts_updated_at BEFORE UPDATE ON tracked_posts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Function to refresh daily tokens
@@ -182,6 +238,7 @@ ALTER TABLE user_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE token_usage_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE linkedin_connections ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tracked_posts ENABLE ROW LEVEL SECURITY;
 
 -- Users can only see their own data
 CREATE POLICY "Users can view own profile" ON users
@@ -203,6 +260,9 @@ CREATE POLICY "Users can view own posts" ON posts
 CREATE POLICY "Users can view own linkedin connections" ON linkedin_connections
     FOR SELECT USING (auth.uid() = user_id::text);
 
+CREATE POLICY "Users can view own tracked posts" ON tracked_posts
+    FOR SELECT USING (auth.uid() = user_id::text);
+
 -- Service role can do everything (for backend operations)
 -- Note: Service role bypasses RLS by default in Supabase, but we add these for clarity
 
@@ -220,3 +280,32 @@ CREATE POLICY "Service role full access posts" ON posts
 
 CREATE POLICY "Service role full access linkedin connections" ON linkedin_connections
     FOR ALL USING (auth.role() = 'service_role');
+
+CREATE POLICY "Service role full access tracked posts" ON tracked_posts
+    FOR ALL USING (auth.role() = 'service_role');
+
+-- ============================================================================
+-- LINKEDIN API LIMITATIONS DOCUMENTATION
+-- ============================================================================
+--
+-- Based on application logs, LinkedIn API returns 403 errors for:
+-- 1. Profile picture requests (/v2/people/(id)/profilePicture)
+-- 2. Detailed profile data (beyond OpenID Connect)
+-- 3. Historical posts retrieval
+--
+-- CURRENT WORKING SCOPES: openid, profile, email, w_member_social
+--
+-- IMPLEMENTED WORKAROUNDS:
+-- ✅ Use OpenID Connect for basic profile (name, email) - WORKING
+-- ✅ Track posts created through our app in tracked_posts table - WORKING
+-- ✅ Store engagement data when LinkedIn provides it - WORKING
+-- ✅ Fallback to user initials instead of profile pictures - WORKING
+-- ✅ Focus on content creation rather than historical data - WORKING
+--
+-- RECOMMENDED APPROACH:
+-- 1. Create posts through our app (works perfectly with w_member_social)
+-- 2. Track them in tracked_posts table automatically
+-- 3. Use tracked data for analytics and post management
+-- 4. Accept LinkedIn's API limitations for historical/profile data
+-- 5. Focus on the core value: AI-powered content creation
+-- ============================================================================

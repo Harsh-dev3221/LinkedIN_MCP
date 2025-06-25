@@ -340,6 +340,319 @@ server.tool(
     }
 );
 
+// Register enhanced profile info tool for dashboard
+server.tool(
+    "get-enhanced-profile-info",
+    "Get comprehensive LinkedIn profile information for dashboard display",
+    {},
+    async (_params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.getEnhancedProfileInfo(linkedinTokens);
+    }
+);
+
+// LinkedIn REST API Tools
+server.tool(
+    "linkedin-rest-create-post",
+    "Create a LinkedIn post using REST API",
+    {
+        commentary: z.string().describe("Post content/commentary"),
+        visibility: z.enum(["PUBLIC", "CONNECTIONS", "LOGGED_IN_MEMBERS"]).optional().describe("Post visibility"),
+        authorId: z.string().optional().describe("LinkedIn member ID (optional, will auto-detect if not provided)")
+    },
+    async ({ commentary, visibility, authorId }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInRestAPITools.createPost({
+            accessToken: linkedinTokens.access_token,
+            commentary,
+            visibility,
+            authorId,
+            userId: transport.auth.jti, // Add JWT ID for tracking
+            tokensUsed: 1 // Default token cost, can be made configurable
+        });
+    }
+);
+
+server.tool(
+    "linkedin-rest-delete-post",
+    "Delete a LinkedIn post using REST API",
+    {
+        postUrn: z.string().describe("LinkedIn post URN to delete")
+    },
+    async ({ postUrn }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInRestAPITools.deletePost({
+            accessToken: linkedinTokens.access_token,
+            postUrn
+        });
+    }
+);
+
+server.tool(
+    "linkedin-rest-update-post",
+    "Update a LinkedIn post using REST API (Note: visibility cannot be changed after creation)",
+    {
+        postUrn: z.string().describe("LinkedIn post URN to update"),
+        commentary: z.string().describe("Updated post content/commentary")
+    },
+    async ({ postUrn, commentary }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInRestAPITools.updatePost({
+            accessToken: linkedinTokens.access_token,
+            postUrn,
+            commentary
+        });
+    }
+);
+
+server.tool(
+    "linkedin-rest-find-reactions",
+    "Find reactions for a LinkedIn post using REST API",
+    {
+        entityUrn: { type: "string", description: "LinkedIn entity URN (post URN) to find reactions for" },
+        reactionType: {
+            type: "string",
+            description: "Filter by reaction type (optional)",
+            enum: ["LIKE", "PRAISE", "APPRECIATION", "EMPATHY", "INTEREST", "ENTERTAINMENT"]
+        }
+    },
+    async (params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInRestAPITools.findReactions({
+            accessToken: linkedinTokens.access_token,
+            entityUrn: params.entityUrn as string,
+            reactionType: params.reactionType as string
+        });
+    }
+);
+
+server.tool(
+    "linkedin-rest-delete-reaction",
+    "Delete a reaction from a LinkedIn post using REST API",
+    {
+        reactionId: { type: "string", description: "LinkedIn reaction ID to delete" }
+    },
+    async (params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInRestAPITools.deleteReaction({
+            accessToken: linkedinTokens.access_token,
+            reactionId: params.reactionId as string
+        });
+    }
+);
+
+server.tool(
+    "linkedin-rest-update-reaction",
+    "Update a reaction on a LinkedIn post using REST API",
+    {
+        reactionId: { type: "string", description: "LinkedIn reaction ID to update" },
+        reactionType: {
+            type: "string",
+            description: "New reaction type",
+            enum: ["LIKE", "PRAISE", "APPRECIATION", "EMPATHY", "INTEREST", "ENTERTAINMENT"]
+        }
+    },
+    async (params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInRestAPITools.updateReaction({
+            accessToken: linkedinTokens.access_token,
+            reactionId: params.reactionId as string,
+            reactionType: params.reactionType as any
+        });
+    }
+);
+
+server.tool(
+    "linkedin-rest-get-videos",
+    "Get multiple LinkedIn videos by their IDs using REST API",
+    {
+        videoIds: {
+            type: "array",
+            description: "Array of LinkedIn video IDs to retrieve",
+            items: { type: "string" }
+        }
+    },
+    async (params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInRestAPITools.getVideos({
+            accessToken: linkedinTokens.access_token,
+            videoIds: params.videoIds as string[]
+        });
+    }
+);
+
+server.tool(
+    "linkedin-rest-initialize-video-upload",
+    "Initialize video upload process for LinkedIn using REST API",
+    {
+        title: { type: "string", description: "Video title (optional)" },
+        description: { type: "string", description: "Video description (optional)" },
+        fileSizeBytes: { type: "number", description: "Video file size in bytes" },
+        uploadCaptions: { type: "boolean", description: "Whether to upload captions (optional, default: false)" },
+        uploadThumbnail: { type: "boolean", description: "Whether to upload thumbnail (optional, default: false)" },
+        authorId: { type: "string", description: "LinkedIn member ID (optional, will auto-detect if not provided)" }
+    },
+    async (params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.linkedInRestAPITools.initializeVideoUpload({
+            accessToken: linkedinTokens.access_token,
+            title: params.title as string,
+            description: params.description as string,
+            fileSizeBytes: params.fileSizeBytes as number,
+            uploadCaptions: params.uploadCaptions as boolean,
+            uploadThumbnail: params.uploadThumbnail as boolean,
+            authorId: params.authorId as string
+        });
+    }
+);
+
+// Register profile-based content suggestions tool
+server.tool(
+    "generate-profile-content-suggestions",
+    "Generate professional content suggestions based on user's LinkedIn profile",
+    {
+        contentType: z.string().optional().describe("Type of content to suggest (general, motivational, industry, leadership)"),
+        count: z.number().optional().describe("Number of suggestions to generate (default: 5)")
+    },
+    async ({ contentType, count }, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        if (!transport.auth.extra || !transport.auth.extra.linkedinTokens) {
+            throw new Error("LinkedIn tokens not found in session");
+        }
+
+        const linkedinTokens = transport.auth.extra.linkedinTokens;
+        return tools.generateProfileBasedContentSuggestions(
+            { contentType, count },
+            linkedinTokens
+        );
+    }
+);
+
 // Helper function to add link scraping to any generation tool
 async function generateContentWithLinkScraping(
     content: string,
@@ -754,6 +1067,11 @@ server.tool(
         userId: z.string().optional(),
     },
     async ({ content, userId }, { sessionId }) => {
+        console.log('📝 publish-text-post: Received content length:', content?.length || 0);
+        console.log('📝 publish-text-post: Content preview:', content?.substring(0, 100) + '...');
+        console.log('📝 publish-text-post: Full content:', content);
+        console.log('📝 publish-text-post: Received userId:', userId);
+
         if (!sessionId) {
             throw new Error("No sessionId found");
         }
@@ -780,6 +1098,83 @@ server.tool(
                 console.error('Error recording basic post:', error);
                 // Don't fail the request if recording fails
             }
+        }
+
+        // Track the post in tracked_posts table for post management
+        // Try to parse the result content to check for success
+        let postId = null;
+        let wasSuccessful = false;
+
+        try {
+            if (result.content && result.content[0] && result.content[0].text) {
+                const responseText = result.content[0].text;
+                // Check if the response indicates success
+                if (responseText.includes('successfully published') || responseText.includes('Post URN:')) {
+                    wasSuccessful = true;
+                    // Try to extract post ID from response text
+                    const urnMatch = responseText.match(/Post URN: (urn:li:[^)]+)/);
+                    if (urnMatch) {
+                        postId = urnMatch[1];
+                    }
+                }
+            }
+        } catch (parseError) {
+            console.error('Error parsing post result:', parseError);
+        }
+
+        if (wasSuccessful && postId) {
+            try {
+                console.log('🔍 Starting post tracking process...');
+                console.log('📝 Post creation result:', { success: wasSuccessful, postId: postId });
+
+                let trackingUserId = null;
+
+                // Method 1: Try to get user ID from the userId parameter (if provided)
+                if (userId) {
+                    console.log('👤 Using provided userId:', userId);
+                    trackingUserId = userId;
+                }
+
+                // Method 2: If no userId provided, try MCP token lookup as fallback
+                if (!trackingUserId) {
+                    const mcpTokenId = transport.auth.jti;
+                    console.log('🔑 Fallback: MCP Token ID:', mcpTokenId);
+
+                    if (mcpTokenId) {
+                        const linkedinTokenService = new (await import('./services/LinkedInTokenService.js')).LinkedInTokenService();
+                        const connection = await linkedinTokenService.getConnectionByMcpToken(mcpTokenId);
+                        console.log('🔗 Connection lookup result:', connection ? 'Found' : 'Not found');
+
+                        if (connection) {
+                            trackingUserId = connection.user_id;
+                            console.log('👤 Database user ID from MCP token:', trackingUserId);
+                        }
+                    }
+                }
+
+                // Track the post if we have a user ID
+                if (trackingUserId) {
+                    const postTrackingService = new (await import('./services/PostTrackingService.js')).PostTrackingService();
+                    await postTrackingService.trackPost({
+                        userId: trackingUserId,
+                        linkedinPostId: postId.split(':').pop() || postId,
+                        linkedinPostUrn: postId,
+                        content: content,
+                        visibility: 'PUBLIC', // Default visibility for text posts
+                        postType: 'text',
+                        tokensUsed: TOKEN_COSTS.BASIC_POST
+                    });
+                    console.log('✅ Post tracked successfully in tracked_posts table');
+                } else {
+                    console.error('❌ Could not determine user ID for tracking - post will not be tracked');
+                    console.error('❌ This should not happen for PostWizz posts!');
+                }
+            } catch (trackingError: any) {
+                console.error('⚠️ Failed to track post in tracked_posts (post still created):', trackingError.message);
+                console.error('⚠️ Tracking error stack:', trackingError.stack);
+            }
+        } else {
+            console.log('❌ Post creation failed or no post ID - skipping tracking');
         }
 
         return result;
@@ -1186,6 +1581,43 @@ server.tool(
         }
 
         return result;
+    }
+);
+
+server.tool(
+    "get-tracked-posts",
+    "Get user's tracked LinkedIn posts from database",
+    {
+        limit: z.number().optional().default(20)
+    },
+    async (params, { sessionId }) => {
+        if (!sessionId) {
+            throw new Error("No sessionId found");
+        }
+
+        const transport = transportsStore.getTransport(sessionId);
+        if (!transport || !transport.auth) {
+            throw new Error("Invalid session or missing authentication");
+        }
+
+        // Get MCP token ID from auth
+        const mcpTokenId = transport.auth.jti;
+        if (!mcpTokenId) {
+            throw new Error("MCP token ID not found in session");
+        }
+
+        // Get database user ID from MCP token
+        const linkedinTokenService = new (await import('./services/LinkedInTokenService.js')).LinkedInTokenService();
+        const connection = await linkedinTokenService.getConnectionByMcpToken(mcpTokenId);
+
+        if (!connection) {
+            throw new Error("User connection not found for MCP token");
+        }
+
+        return tools.linkedInRestAPITools.getTrackedPosts({
+            userId: connection.user_id, // Use database user ID
+            limit: params.limit as number
+        });
     }
 );
 
@@ -1892,6 +2324,29 @@ app.get("/auth/callback", (req, res) => {
 
 // LinkedIn OAuth callback endpoint
 app.get("/oauth/callback", (req, res) => {
+    console.log('🔍 LinkedIn OAuth callback endpoint hit:', {
+        query: req.query,
+        hasCode: !!req.query.code,
+        hasState: !!req.query.state,
+        hasError: !!req.query.error,
+        error: req.query.error,
+        errorDescription: req.query.error_description
+    });
+
+    // Check for LinkedIn OAuth errors
+    if (req.query.error) {
+        console.error('❌ LinkedIn OAuth error:', {
+            error: req.query.error,
+            description: req.query.error_description,
+            state: req.query.state
+        });
+
+        // Redirect to frontend with error
+        const frontendUrl = process.env.CORS_ALLOWED_ORIGIN || 'http://localhost:5173';
+        const errorUrl = `${frontendUrl}/auth/callback?error=${req.query.error}&error_description=${encodeURIComponent(req.query.error_description as string || '')}`;
+        return res.redirect(errorUrl);
+    }
+
     const code = req.query.code as string;
     const state = req.query.state as string;
 

@@ -484,6 +484,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             setAuthState(AuthState.CHECKING_LINKEDIN);
 
             const isValid = await validateMcpToken(mcpToken);
+            console.log('🔍 AuthContext: LinkedIn validation result:', {
+                isValid,
+                mcpToken: !!mcpToken,
+                willSetConnected: isValid
+            });
             setLinkedinConnected(isValid);
 
             if (isValid) {
@@ -500,6 +505,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     // Effect to validate LinkedIn connection when mcpToken changes
     useEffect(() => {
+        console.log('🔍 AuthContext: LinkedIn validation effect triggered', {
+            mcpToken: !!mcpToken,
+            linkedinConnected,
+            linkedinStatusLoading,
+            validationInProgress: linkedinValidationRef.current
+        });
+
         if (mcpToken && !linkedinValidationRef.current) {
             logger.debug('MCP token detected, validating LinkedIn connection');
             checkLinkedInStatus();
