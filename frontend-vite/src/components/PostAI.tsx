@@ -35,6 +35,13 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
     return {
         callTool: async (toolName: string, params: any) => {
             try {
+                // Use longer timeout for image processing tools
+                const isImageTool = toolName.includes('image') || toolName.includes('analyze');
+                const timeout = isImageTool ? 60000 : 30000; // 60 seconds for image tools, 30 for others
+
+                console.log(`🔧 Calling tool: ${toolName} with timeout: ${timeout}ms`);
+                console.log(`📊 Request params:`, { ...params, imageBase64: params.imageBase64 ? '[IMAGE_DATA]' : undefined });
+
                 const response = await axios.post(`${import.meta.env.VITE_MCP_SERVER_URL}/mcp`, {
                     type: "call-tool",
                     tool: toolName,
@@ -44,15 +51,38 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 30000 // 30 second timeout
+                    timeout
+                });
+
+                console.log(`✅ Tool response received:`, {
+                    tool: toolName,
+                    isError: response.data.isError,
+                    hasContent: !!response.data.content,
+                    contentLength: response.data.content?.[0]?.text?.length,
+                    enhanced: response.data.enhanced,
+                    processingTime: response.data.processingTime
                 });
 
                 if (response.data.isError) {
+                    console.error(`❌ Tool error:`, response.data.content[0].text);
                     throw new Error(response.data.content[0].text);
+                }
+
+                // Validate response structure
+                if (!response.data.content || !response.data.content[0] || !response.data.content[0].text) {
+                    console.error(`❌ Invalid response structure:`, response.data);
+                    throw new Error('Invalid response structure from server');
                 }
 
                 return response.data;
             } catch (error: any) {
+                console.error(`❌ Tool call failed for ${toolName}:`, {
+                    message: error.message,
+                    code: error.code,
+                    status: error.response?.status,
+                    data: error.response?.data
+                });
+
                 // Handle authentication errors
                 if (error.response?.status === 401 || error.response?.status === 403) {
                     if (onTokenExpired) {
@@ -66,9 +96,24 @@ const createMcpClient = (token: string, onTokenExpired?: () => void) => {
                     throw new Error(`API tool not available: ${toolName}. Please check if the backend supports this operation.`);
                 }
 
+                // Handle timeout errors specifically
+                if (error.code === 'ECONNABORTED') {
+                    throw new Error(`Request timeout. ${toolName.includes('image') ? 'Image processing is taking longer than expected. Please try with a smaller image or simpler content.' : 'Please try again.'}`);
+                }
+
                 // Handle network errors
-                if (error.code === 'ECONNABORTED' || error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+                if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
                     throw new Error('Network error. Please check your connection and try again.');
+                }
+
+                // Handle server errors with more detail
+                if (error.response?.status >= 500) {
+                    throw new Error(`Server error (${error.response.status}): ${error.response?.data?.message || error.message}`);
+                }
+
+                // Handle client errors with more detail
+                if (error.response?.status >= 400) {
+                    throw new Error(`Request error (${error.response.status}): ${error.response?.data?.message || error.message}`);
                 }
 
                 throw error;
@@ -265,11 +310,24 @@ const PostAI = ({ authToken, userId, onGeneratedContent, onError, onSuccess, onT
                 const imageData = selectedImages[0];
                 const base64Data = imageData.base64.split(',')[1] || imageData.base64;
 
+                console.log(`🖼️ Starting single image analysis...`);
+                console.log(`📊 Image info:`, {
+                    mimeType: imageData.mimeType,
+                    sizeKB: Math.round(base64Data.length * 0.75 / 1024),
+                    promptLength: postText.length
+                });
+
                 const result = await mcpClient.callTool('analyze-image-create-post', {
                     imageBase64: base64Data,
                     prompt: postText,
                     mimeType: imageData.mimeType,
                     userId: userId
+                });
+
+                console.log(`✅ Image analysis completed:`, {
+                    contentLength: result.content[0].text.length,
+                    enhanced: result.enhanced,
+                    processingTime: result.processingTime
                 });
 
                 // Provide both the content and image data to the parent
@@ -281,7 +339,7 @@ const PostAI = ({ authToken, userId, onGeneratedContent, onError, onSuccess, onT
                     },
                     imageMode: 'single'
                 });
-                onSuccess('Content generated with image analysis!');
+                onSuccess(`Content generated with image analysis! ${result.enhanced ? '(Enhanced with link insights)' : ''}`);
             }
             // Multi-image post (carousel)
             else if (imageMode === 'multi' && selectedImages.length >= MIN_IMAGES) {
@@ -332,7 +390,15 @@ My draft text to enhance: "${postText}"`,
                 onError(`Please select at least ${MIN_IMAGES} images for a carousel post.`);
             }
         } catch (error) {
-            onError((error instanceof Error) ? error.message : 'An unknown error occurred');
+            console.error(`❌ Content generation failed:`, error);
+            const errorMessage = (error instanceof Error) ? error.message : 'An unknown error occurred';
+            console.error(`❌ Error details:`, {
+                message: errorMessage,
+                imageMode,
+                selectedImagesCount: selectedImages.length,
+                postTextLength: postText.length
+            });
+            onError(errorMessage);
         } finally {
             setIsProcessing(false);
         }

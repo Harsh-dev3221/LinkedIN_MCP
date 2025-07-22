@@ -68,6 +68,10 @@ const createMcpClient = (token: string) => {
     return {
         callTool: async (toolName: string, params: any) => {
             try {
+                // Use longer timeout for image processing tools
+                const isImageTool = toolName.includes('image') || toolName.includes('analyze');
+                const timeout = isImageTool ? 60000 : 30000; // 60 seconds for image tools, 30 for others
+
                 const response = await axios.post(`${import.meta.env.VITE_MCP_SERVER_URL}/mcp`, {
                     type: "call-tool",
                     tool: toolName,
@@ -77,7 +81,7 @@ const createMcpClient = (token: string) => {
                         'Authorization': `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 30000
+                    timeout
                 });
 
                 if (response.data.isError) {

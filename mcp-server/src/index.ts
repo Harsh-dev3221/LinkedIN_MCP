@@ -803,7 +803,16 @@ Create a comprehensive LinkedIn post that integrates insights from both the imag
 
                 console.log(`✅ Enhanced generation completed`);
                 console.log(`📊 Final content length: ${orchestrationResult.generatedContent?.length || 0} characters`);
+
+                const totalProcessingTime = Date.now() - startTime;
+                console.log(`⏱️ Total processing time: ${totalProcessingTime}ms`);
                 console.log(`🎯 === SMART IMAGE GENERATION END (ENHANCED) ===\n`);
+
+                // Validate generated content before returning
+                if (!orchestrationResult.generatedContent || orchestrationResult.generatedContent.trim().length === 0) {
+                    console.error(`❌ Generated content is empty or invalid`);
+                    throw new Error('Generated content is empty. Please try again with different input.');
+                }
 
                 return {
                     content: [{
@@ -813,7 +822,7 @@ Create a comprehensive LinkedIn post that integrates insights from both the imag
                     isError: false,
                     enhanced: true,
                     linksProcessed: detectedLinks.length,
-                    processingTime: Date.now() - startTime
+                    processingTime: totalProcessingTime
                 };
             } else {
                 console.log(`⚠️ No scraped data available, falling back to image analysis result`);
