@@ -13,7 +13,7 @@ export interface ScrapeOptions {
 export interface ScrapedData {
     id: string;
     url: string;
-    type: 'github' | 'website';
+    type: 'github' | 'website' | 'article' | 'documentation' | 'social' | 'video' | 'qa';
     title: string;
     description: string;
     content: string;
@@ -23,6 +23,10 @@ export interface ScrapedData {
         tags?: string[];
         projectFiles?: Record<string, any>;
         scrapingMethod?: string;
+        publishDate?: string;
+        readingTime?: string;
+        claps?: string;
+        platform?: string;
     };
     github?: {
         stars: number;
@@ -74,6 +78,14 @@ export class LinkScrapingTools {
                 // Route to appropriate scraper based on URL
                 if (url.includes('github.com')) {
                     scrapedData = await this.scrapeGitHub(url, finalOptions);
+                } else if (url.includes('medium.com')) {
+                    scrapedData = await this.scrapeMedium(url, finalOptions);
+                } else if (url.includes('dev.to')) {
+                    scrapedData = await this.scrapeDevTo(url, finalOptions);
+                } else if (url.includes('hashnode.') || url.includes('.hashnode.dev')) {
+                    scrapedData = await this.scrapeHashnode(url, finalOptions);
+                } else if (url.includes('substack.com')) {
+                    scrapedData = await this.scrapeSubstack(url, finalOptions);
                 } else {
                     scrapedData = await this.scrapeWebsite(url, finalOptions);
                 }
@@ -314,6 +326,324 @@ export class LinkScrapingTools {
     }
 
     /**
+     * Scrape Medium articles with specialized selectors
+     */
+    private async scrapeMedium(url: string, options: ScrapeOptions): Promise<ScrapedData> {
+        try {
+            const response = await axios.get(url, {
+                timeout: options.timeout,
+                maxRedirects: options.followRedirects ? 5 : 0,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'en-US,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Connection': 'keep-alive',
+                    'Upgrade-Insecure-Requests': '1'
+                }
+            });
+
+            const $ = cheerio.load(response.data);
+
+            // Medium-specific selectors
+            const title = $('h1[data-testid="storyTitle"]').text().trim() ||
+                $('h1').first().text().trim() ||
+                $('title').text().replace(' | Medium', '').trim() ||
+                'No title found';
+
+            const description = $('meta[name="description"]').attr('content') ||
+                $('meta[property="og:description"]').attr('content') ||
+                $('h2[data-testid="subtitle"]').text().trim() ||
+                'No description available';
+
+            // Extract author information
+            const author = $('meta[name="author"]').attr('content') ||
+                $('a[rel="author"]').text().trim() ||
+                $('[data-testid="authorName"]').text().trim() ||
+                $('.author-name').text().trim() ||
+                $('span[data-testid="authorName"]').text().trim();
+
+            // Extract publication date
+            const publishDate = $('meta[property="article:published_time"]').attr('content') ||
+                $('time').attr('datetime') ||
+                $('[data-testid="storyPublishDate"]').text().trim();
+
+            // Extract reading time
+            const readingTime = $('span[data-testid="storyReadTime"]').text().trim() ||
+                $('.reading-time').text().trim();
+
+            // Extract main content with Medium-specific selectors
+            let content = '';
+
+            // Try Medium's article content selectors in order of preference
+            const mediumContentSelectors = [
+                'article section',
+                '[data-testid="storyContent"]',
+                '.postArticle-content',
+                '.section-content',
+                'article',
+                '.post-content'
+            ];
+
+            for (const selector of mediumContentSelectors) {
+                const element = $(selector);
+                if (element.length > 0) {
+                    // Extract text from paragraphs and headers, preserving structure
+                    content = element.find('p, h1, h2, h3, h4, h5, h6, blockquote, li')
+                        .map((_, el) => $(el).text().trim())
+                        .get()
+                        .filter(text => text.length > 0)
+                        .join('\n\n');
+
+                    if (content.length > 100) { // Only use if we got substantial content
+                        break;
+                    }
+                }
+            }
+
+            // Fallback to body text if no content found
+            if (!content || content.length < 100) {
+                content = $('body').text().trim();
+            }
+
+            // Clean and limit content
+            content = this.cleanContent(content);
+            if (content.length > options.maxContentLength) {
+                content = content.substring(0, options.maxContentLength) + '...';
+            }
+
+            // Extract tags/topics
+            const tags = $('a[href*="/tag/"]').map((_, el) => $(el).text().trim()).get().slice(0, 5);
+
+            // Extract claps/engagement if available
+            const claps = $('[data-testid="clapCount"]').text().trim() ||
+                $('.clapCount').text().trim();
+
+            return {
+                id: randomUUID(),
+                url,
+                type: 'article',
+                title,
+                description,
+                content,
+                metadata: {
+                    author: author || undefined,
+                    publishDate: publishDate || undefined,
+                    readingTime: readingTime || undefined,
+                    tags: tags.length > 0 ? tags : undefined,
+                    claps: claps || undefined,
+                    platform: 'Medium',
+                    language: $('html').attr('lang') || 'en'
+                },
+                scrapedAt: new Date(),
+                status: 'success'
+            };
+        } catch (error) {
+            console.error('Error scraping Medium article:', error);
+            throw new Error(`Failed to scrape Medium article: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Scrape Dev.to articles with specialized selectors
+     */
+    private async scrapeDevTo(url: string, options: ScrapeOptions): Promise<ScrapedData> {
+        try {
+            const response = await axios.get(url, {
+                timeout: options.timeout,
+                maxRedirects: options.followRedirects ? 5 : 0,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                }
+            });
+
+            const $ = cheerio.load(response.data);
+
+            const title = $('h1.crayons-article__header__title').text().trim() ||
+                $('h1').first().text().trim() ||
+                'No title found';
+
+            const description = $('meta[name="description"]').attr('content') ||
+                $('meta[property="og:description"]').attr('content') ||
+                'No description available';
+
+            const author = $('.crayons-article__header__meta a').first().text().trim() ||
+                $('meta[name="author"]').attr('content');
+
+            const publishDate = $('time').attr('datetime');
+            const readingTime = $('.crayons-article__header__meta time').next().text().trim();
+
+            // Extract main content
+            let content = $('.crayons-article__main .crayons-article__body').text().trim() ||
+                $('#article-body').text().trim() ||
+                $('article').text().trim();
+
+            content = this.cleanContent(content);
+            if (content.length > options.maxContentLength) {
+                content = content.substring(0, options.maxContentLength) + '...';
+            }
+
+            // Extract tags
+            const tags = $('.crayons-tag').map((_, el) => $(el).text().trim().replace('#', '')).get();
+
+            return {
+                id: randomUUID(),
+                url,
+                type: 'article',
+                title,
+                description,
+                content,
+                metadata: {
+                    author: author || undefined,
+                    publishDate: publishDate || undefined,
+                    readingTime: readingTime || undefined,
+                    tags: tags.length > 0 ? tags : undefined,
+                    platform: 'Dev.to',
+                    language: $('html').attr('lang') || 'en'
+                },
+                scrapedAt: new Date(),
+                status: 'success'
+            };
+        } catch (error) {
+            console.error('Error scraping Dev.to article:', error);
+            throw new Error(`Failed to scrape Dev.to article: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Scrape Hashnode articles with specialized selectors
+     */
+    private async scrapeHashnode(url: string, options: ScrapeOptions): Promise<ScrapedData> {
+        try {
+            const response = await axios.get(url, {
+                timeout: options.timeout,
+                maxRedirects: options.followRedirects ? 5 : 0,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                }
+            });
+
+            const $ = cheerio.load(response.data);
+
+            const title = $('h1.blog-title').text().trim() ||
+                $('h1').first().text().trim() ||
+                'No title found';
+
+            const description = $('meta[name="description"]').attr('content') ||
+                $('meta[property="og:description"]').attr('content') ||
+                'No description available';
+
+            const author = $('.author-name').text().trim() ||
+                $('meta[name="author"]').attr('content');
+
+            const publishDate = $('time').attr('datetime') ||
+                $('.publish-date').text().trim();
+
+            // Extract main content
+            let content = $('.blog-content-wrapper').text().trim() ||
+                $('.post-content').text().trim() ||
+                $('article').text().trim();
+
+            content = this.cleanContent(content);
+            if (content.length > options.maxContentLength) {
+                content = content.substring(0, options.maxContentLength) + '...';
+            }
+
+            // Extract tags
+            const tags = $('.tag').map((_, el) => $(el).text().trim()).get();
+
+            return {
+                id: randomUUID(),
+                url,
+                type: 'article',
+                title,
+                description,
+                content,
+                metadata: {
+                    author: author || undefined,
+                    publishDate: publishDate || undefined,
+                    tags: tags.length > 0 ? tags : undefined,
+                    platform: 'Hashnode',
+                    language: $('html').attr('lang') || 'en'
+                },
+                scrapedAt: new Date(),
+                status: 'success'
+            };
+        } catch (error) {
+            console.error('Error scraping Hashnode article:', error);
+            throw new Error(`Failed to scrape Hashnode article: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
+     * Scrape Substack newsletters with specialized selectors
+     */
+    private async scrapeSubstack(url: string, options: ScrapeOptions): Promise<ScrapedData> {
+        try {
+            const response = await axios.get(url, {
+                timeout: options.timeout,
+                maxRedirects: options.followRedirects ? 5 : 0,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                }
+            });
+
+            const $ = cheerio.load(response.data);
+
+            const title = $('.post-title').text().trim() ||
+                $('h1.post-title').text().trim() ||
+                $('h1').first().text().trim() ||
+                'No title found';
+
+            const description = $('meta[name="description"]').attr('content') ||
+                $('meta[property="og:description"]').attr('content') ||
+                $('.subtitle').text().trim() ||
+                'No description available';
+
+            const author = $('.byline-names').text().trim() ||
+                $('.author-name').text().trim() ||
+                $('meta[name="author"]').attr('content');
+
+            const publishDate = $('time').attr('datetime') ||
+                $('.post-date').text().trim();
+
+            // Extract main content
+            let content = $('.available-content').text().trim() ||
+                $('.body').text().trim() ||
+                $('.post-content').text().trim() ||
+                $('article').text().trim();
+
+            content = this.cleanContent(content);
+            if (content.length > options.maxContentLength) {
+                content = content.substring(0, options.maxContentLength) + '...';
+            }
+
+            return {
+                id: randomUUID(),
+                url,
+                type: 'article',
+                title,
+                description,
+                content,
+                metadata: {
+                    author: author || undefined,
+                    publishDate: publishDate || undefined,
+                    platform: 'Substack',
+                    language: $('html').attr('lang') || 'en'
+                },
+                scrapedAt: new Date(),
+                status: 'success'
+            };
+        } catch (error) {
+            console.error('Error scraping Substack article:', error);
+            throw new Error(`Failed to scrape Substack article: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
+    /**
      * Scrape general website
      */
     private async scrapeWebsite(url: string, options: ScrapeOptions): Promise<ScrapedData> {
@@ -342,31 +672,77 @@ export class LinkScrapingTools {
                 $('p').first().text().trim().substring(0, 200) ||
                 'No description available';
 
-            // Extract main content
+            // Extract main content with improved selectors
             let content = '';
 
-            // Try different content selectors
+            // Enhanced content selectors for better extraction
             const contentSelectors = [
+                // Semantic HTML5 selectors
                 'article',
-                '.content',
+                'main article',
+                '[role="main"] article',
+
+                // Common blog/article selectors
                 '.post-content',
                 '.entry-content',
-                'main',
+                '.article-content',
+                '.content-body',
+                '.story-content',
+
+                // Generic content containers
+                '.content',
                 '.main-content',
+                '#content',
+                '#main-content',
+
+                // Fallback to main sections
+                'main',
+                '.main',
+                '#main',
+
+                // Last resort
                 'body'
             ];
 
             for (const selector of contentSelectors) {
                 const element = $(selector);
                 if (element.length > 0) {
-                    content = element.text().trim();
-                    break;
+                    // Remove unwanted elements before extracting text
+                    element.find('script, style, nav, header, footer, aside, .sidebar, .navigation, .menu, .ads, .advertisement').remove();
+
+                    // Extract text from meaningful elements, preserving structure
+                    const textContent = element.find('p, h1, h2, h3, h4, h5, h6, blockquote, li, div')
+                        .map((_, el) => {
+                            const text = $(el).text().trim();
+                            // Only include substantial text blocks
+                            return text.length > 20 ? text : '';
+                        })
+                        .get()
+                        .filter(text => text.length > 0)
+                        .join('\n\n');
+
+                    if (textContent.length > 200) { // Only use if we got substantial content
+                        content = textContent;
+                        break;
+                    }
                 }
             }
 
-            // Fallback to body text
-            if (!content) {
-                content = $('body').text().trim();
+            // Enhanced fallback extraction
+            if (!content || content.length < 200) {
+                // Try to extract from paragraphs directly
+                const paragraphs = $('p').map((_, el) => $(el).text().trim()).get()
+                    .filter(text => text.length > 30)
+                    .join('\n\n');
+
+                if (paragraphs.length > content.length) {
+                    content = paragraphs;
+                } else {
+                    // Last resort: clean body text
+                    const bodyClone = $('body').clone();
+                    bodyClone.find('script, style, nav, header, footer, aside, .sidebar, .navigation, .menu').remove();
+                    content = bodyClone.text().trim();
+                }
             }
 
             // Clean and limit content
@@ -425,12 +801,44 @@ export class LinkScrapingTools {
     }
 
     /**
-     * Clean scraped content
+     * Detect URL type for better routing
+     */
+    private detectUrlType(url: string): string {
+        const lowerUrl = url.toLowerCase();
+
+        if (lowerUrl.includes('github.com')) return 'github';
+        if (lowerUrl.includes('medium.com')) return 'article';
+        if (lowerUrl.includes('dev.to')) return 'article';
+        if (lowerUrl.includes('hashnode.') || lowerUrl.includes('.hashnode.dev')) return 'article';
+        if (lowerUrl.includes('substack.com')) return 'article';
+        if (lowerUrl.includes('blog.') || lowerUrl.includes('/blog/')) return 'article';
+        if (lowerUrl.includes('docs.') || lowerUrl.includes('documentation.')) return 'documentation';
+        if (lowerUrl.includes('linkedin.com') || lowerUrl.includes('twitter.com')) return 'social';
+        if (lowerUrl.includes('youtube.com') || lowerUrl.includes('youtu.be')) return 'video';
+        if (lowerUrl.includes('stackoverflow.com') || lowerUrl.includes('stackexchange.com')) return 'qa';
+
+        return 'website';
+    }
+
+    /**
+     * Clean scraped content with enhanced processing
      */
     private cleanContent(content: string): string {
         return content
-            .replace(/\s+/g, ' ')  // Replace multiple whitespace with single space
-            .replace(/\n\s*\n/g, '\n\n')  // Clean up multiple newlines
+            // Remove excessive whitespace but preserve paragraph breaks
+            .replace(/[ \t]+/g, ' ')  // Replace multiple spaces/tabs with single space
+            .replace(/\n\s*\n\s*\n+/g, '\n\n')  // Replace multiple newlines with double newline
+            .replace(/^\s+|\s+$/gm, '')  // Trim each line
+            // Remove common unwanted patterns
+            .replace(/\b(Share|Like|Follow|Subscribe|Sign up|Log in|Cookie|Privacy Policy|Terms of Service)\b/gi, '')
+            .replace(/\b\d+\s+(min read|minute read|minutes read)\b/gi, '')
+            .replace(/\b(Published|Updated|Posted)\s+on\s+\w+\s+\d+,?\s+\d{4}\b/gi, '')
+            // Remove social media noise
+            .replace(/\b\d+\s+(likes?|shares?|comments?|views?|claps?)\b/gi, '')
+            .replace(/\b(Twitter|Facebook|LinkedIn|Instagram|YouTube)\s+(Follow|Like|Share)\b/gi, '')
+            // Clean up remaining artifacts
+            .replace(/\n{3,}/g, '\n\n')  // Limit to max 2 consecutive newlines
+            .replace(/\s+([.!?])/g, '$1')  // Remove space before punctuation
             .trim();
     }
 
@@ -489,7 +897,7 @@ export class LinkScrapingTools {
 
             const links = urls.map(url => ({
                 url,
-                type: url.includes('github.com') ? 'github' : 'website',
+                type: this.detectUrlType(url),
                 position: text.indexOf(url)
             }));
 

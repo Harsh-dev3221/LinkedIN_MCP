@@ -314,15 +314,55 @@ export class PostScheduler {
         } catch (error) {
             console.error(`❌ Failed to publish scheduled post ${post.id}:`, error);
 
-            // Update post status to failed
-            await supabase
-                .from('scheduled_posts')
-                .update({
-                    status: 'failed',
-                    error_message: error instanceof Error ? error.message : 'Unknown error',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', post.id);
+            // Check if this is a duplicate post error
+            const isDuplicatePost = error &&
+                typeof error === 'object' &&
+                'data' in error &&
+                error.data &&
+                typeof error.data === 'object' &&
+                'errorDetails' in error.data &&
+                error.data.errorDetails &&
+                typeof error.data.errorDetails === 'object' &&
+                'inputErrors' in error.data.errorDetails &&
+                Array.isArray(error.data.errorDetails.inputErrors) &&
+                error.data.errorDetails.inputErrors.some((err: any) => err.code === 'DUPLICATE_POST');
+
+            if (isDuplicatePost) {
+                console.log(`⚠️ Post ${post.id} was already published to LinkedIn - marking as published`);
+
+                // Extract LinkedIn post URN from error message if available
+                let linkedinPostId = null;
+                const errorMessage = error instanceof Error ? error.message : String(error);
+                const urnMatch = errorMessage.match(/urn:li:share:(\d+)/);
+                if (urnMatch) {
+                    linkedinPostId = urnMatch[0];
+                }
+
+                // Mark as published since it already exists on LinkedIn
+                const publishedAt = new Date().toISOString();
+                await supabase
+                    .from('scheduled_posts')
+                    .update({
+                        status: 'published',
+                        linkedin_post_id: linkedinPostId,
+                        published_at: publishedAt,
+                        updated_at: publishedAt,
+                        error_message: 'Post was already published to LinkedIn (duplicate detected)'
+                    })
+                    .eq('id', post.id);
+
+                console.log(`✅ Marked duplicate post ${post.id} as published`);
+            } else {
+                // Update post status to failed for other errors
+                await supabase
+                    .from('scheduled_posts')
+                    .update({
+                        status: 'failed',
+                        error_message: error instanceof Error ? error.message : 'Unknown error',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', post.id);
+            }
         }
     }
 
